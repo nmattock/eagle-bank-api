@@ -1,0 +1,21 @@
+# IDE/editor
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+
+# Local environment overrides
+.env
+.env.*
+!.env.example
+
+# Go build/test artifacts
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage.out
+*.coverprofile
+

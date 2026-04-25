@@ -1,0 +1,29 @@
+# Local Postgres for development and tests (same idea as mounting db/initdb into the DB image).
+#
+# Start:  docker compose up -d
+# Stop:   docker compose down
+# Reset:  docker compose down -v   (removes DB volume; init scripts run again on next up)
+#
+# Connection URL (e.g. from Go): postgres://eagle:eagle@localhost:5432/eagle_bank?sslmode=disable
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: eagle-bank-postgres
+    environment:
+      POSTGRES_USER: eagle
+      POSTGRES_PASSWORD: eagle
+      POSTGRES_DB: eagle_bank
+    ports:
+      - "5432:5432"
+    volumes:
+      - eagle_bank_pgdata:/var/lib/postgresql/data
+      - ./db/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eagle -d eagle_bank"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  eagle_bank_pgdata:
