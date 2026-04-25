@@ -7,15 +7,28 @@ REST API for Eagle Bank, implemented against [`openapi.yaml`](openapi.yaml) (acc
 - [Go](https://go.dev/dl/)
 - [Docker](https://docs.docker.com/get-docker/) with Compose v2
 
+## Setup
+
+From the repo root:
+
+```bash
+docker compose up -d
+go test ./...
+```
+
+This starts local Postgres and runs unit tests.
+
 ## Local database (PostgreSQL)
 
-The repo ships a small Compose stack: Postgres with a bind-mounted `db/initdb` folder (scripts run **once** when the data volume is first created—same pattern as mounting SQL into the official DB image).
+The repo ships a small Compose stack: Postgres with a bind-mounted `db/initdb` folder (scripts run **once** when the data volume is first created).
+
+Start DB:
 
 ```bash
 docker compose up -d
 ```
 
-Wait until the container is healthy (Compose runs `pg_isready` on an interval). Then connect with:
+Connection settings:
 
 | Setting | Value |
 |--------|--------|
@@ -25,13 +38,13 @@ Wait until the container is healthy (Compose runs `pg_isready` on an interval). 
 | User | `eagle` |
 | Password | `eagle` |
 
-Example DSN for Go:
+DSN:
 
 ```text
 postgres://eagle:eagle@localhost:5432/eagle_bank?sslmode=disable
 ```
 
-**Reset the database** (drops the volume so init scripts run again from a clean state):
+Reset DB (drops volume and reruns init SQL on next startup):
 
 ```bash
 docker compose down -v && docker compose up -d
@@ -47,12 +60,12 @@ If Compose fails with **port 5432 already allocated**, another Postgres (or this
 
 The `users` table matches the OpenAPI **UserResponse** / **CreateUserRequest** shape:
 
-- **`id`** — `TEXT` primary key; must match `^usr-[A-Za-z0-9]+$` (same as `UserResponse.id`). Your service should generate values (for example random alphanumeric suffixes) before insert.
+- **`id`** — `TEXT` primary key; must match `^usr-[A-Za-z0-9]+$` (same as `UserResponse.id`). Your service should generate values before insert.
 - **`name`**, **`phone_number`** (E.164), **`email`** — as in the spec; `email` is unique at the DB level.
-- **Address** — nested `address` object in JSON is stored as **`address_line1`**, **`address_line2`**, **`address_line3`**, **`town`**, **`county`**, **`postcode`** (required vs optional lines follow the spec: line2/line3 nullable).
-- **`created_at`**, **`updated_at`** — `timestamptz`, default `now()` on insert; the API should refresh **`updated_at`** on successful updates to match `updatedTimestamp`.
+- **Address** — nested `address` object is stored as **`address_line1`**, **`address_line2`**, **`address_line3`**, **`town`**, **`county`**, **`postcode`**.
+- **`created_at`**, **`updated_at`** — `timestamptz`, default `now()` on insert; app code should refresh `updated_at` on updates.
 
-Validation in the OpenAPI (for example `format: email`) should still be enforced in application code; the SQL file adds minimal checks (`id` pattern, phone pattern) so bad rows are harder to insert by mistake.
+Validation from OpenAPI (for example `format: email`) should still be enforced in application code.
 
 ## Tests
 
@@ -64,23 +77,21 @@ Fast tests (in-memory store, no Postgres):
 go test ./...
 ```
 
-That runs packages such as [`internal/users/memory`](internal/users/memory); Postgres integration sources are **not** compiled unless you pass the `integration` build tag (see below).
-
 ### Integration tests (real Postgres)
 
-Integration tests live under [`internal/users/postgres`](internal/users/postgres) and use the **`integration` build tag**. They connect with **`TEST_DATABASE_URL`** and exercise the real `users` table.
+Integration tests live under [`internal/users/postgres`](internal/users/postgres), use the `integration` build tag, and read `TEST_DATABASE_URL`.
 
-1. Start Postgres with the schema applied (for example local Compose from [Local database](#local-database-postgresql)).
-2. Run:
+Run:
 
 ```bash
+docker compose up -d
 export TEST_DATABASE_URL='postgres://eagle:eagle@localhost:5432/eagle_bank?sslmode=disable'
 go test -tags=integration ./internal/users/postgres/...
 ```
 
-If you publish Postgres on another host port, change the URL accordingly (for example `localhost:5433`).
+If you publish Postgres on another host port, update `TEST_DATABASE_URL` accordingly (for example `localhost:5433`).
 
-If `TEST_DATABASE_URL` is unset, integration tests **skip** so CI or laptops without Docker still succeed.
+If `TEST_DATABASE_URL` is unset, integration tests skip.
 
 ## Project layout
 
@@ -89,5 +100,5 @@ If `TEST_DATABASE_URL` is unset, integration tests **skip** so CI or laptops wit
 - `db/initdb/` — SQL executed on first-time volume initialization
 - `main.go` — application entrypoint (placeholder until the API is implemented)
 - `internal/users` — `Repository` interface and domain types
-- `internal/users/postgres` — Postgres implementation (`database/sql` + `pgx` driver: import `_ "github.com/jackc/pgx/v5/stdlib"` and `sql.Open("pgx", dsn)`)
-- `internal/users/memory` — in-memory `Repository` for fast unit tests (`go test ./internal/users/memory/...`)
+- `internal/users/postgres` — Postgres implementation (`database/sql` + `pgx` driver)
+- `internal/users/memory` — in-memory `Repository` for fast unit tests
