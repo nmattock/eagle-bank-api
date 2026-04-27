@@ -8,16 +8,22 @@ import (
 	"strings"
 	"time"
 
+	"eagle-bank-api/internal/auth"
 	"eagle-bank-api/internal/users"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UserHandler struct {
-	repo users.Repository
+	repo   users.Repository
+	tokens *auth.TokenService
 }
 
-func NewUserHandler(repo users.Repository) *UserHandler {
-	return &UserHandler{repo: repo}
+func NewUserHandler(repo users.Repository, tokens ...*auth.TokenService) *UserHandler {
+	var tokenService *auth.TokenService
+	if len(tokens) > 0 {
+		tokenService = tokens[0]
+	}
+	return &UserHandler{repo: repo, tokens: tokenService}
 }
 
 type createUserAddressRequest struct {
@@ -61,6 +67,10 @@ type userResponse struct {
 }
 
 func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(r.URL.Path, "/v1/users/") {
+		h.handleUserByID(w, r)
+		return
+	}
 	if r.URL.Path != "/v1/users" {
 		http.NotFound(w, r)
 		return
@@ -116,28 +126,66 @@ func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := userResponse{
-		ID:   createdUser.ID,
-		Name: createdUser.Name,
-		Address: userAddressResponse{
-			Line1:    createdUser.AddressLine1,
-			Line2:    createdUser.AddressLine2,
-			Line3:    createdUser.AddressLine3,
-			Town:     createdUser.Town,
-			County:   createdUser.County,
-			Postcode: createdUser.Postcode,
-		},
-		PhoneNumber:      createdUser.PhoneNumber,
-		Email:            createdUser.Email,
-		CreatedTimestamp: createdUser.CreatedAt.UTC().Format(time.RFC3339Nano),
-		UpdatedTimestamp: createdUser.UpdatedAt.UTC().Format(time.RFC3339Nano),
-	}
-	writeJSON(w, http.StatusCreated, resp)
+	writeJSON(w, http.StatusCreated, toUserResponse(createdUser))
 }
 
-func isAuthenticated(r *http.Request) bool {
+func (h *UserHandler) handleUserByID(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	userID := strings.TrimPrefix(r.URL.Path, "/v1/users/")
+	if userID == "" || strings.Contains(userID, "/") {
+		http.NotFound(w, r)
+		return
+	}
+
+	claims, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+	if claims.Subject != userID {
+		writeJSON(w, http.StatusForbidden, errorResponse{Message: "forbidden"})
+		return
+	}
+
+	u, err := h.repo.GetByID(r.Context(), userID)
+	if err != nil {
+		if errors.Is(err, users.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{Message: "user not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, toUserResponse(u))
+}
+
+func (h *UserHandler) authenticate(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
+	if h.tokens == nil {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
+		return nil, false
+	}
+	token, ok := bearerToken(r)
+	if !ok {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
+		return nil, false
+	}
+	claims, err := h.tokens.Verify(token)
+	if err != nil {
+		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
+		return nil, false
+	}
+	return claims, true
+}
+
+func bearerToken(r *http.Request) (string, bool) {
 	auth := r.Header.Get("Authorization")
-	return strings.HasPrefix(auth, "Bearer ") && len(strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))) > 0
+	if !strings.HasPrefix(auth, "Bearer ") {
+		return "", false
+	}
+	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+	return token, token != ""
 }
 
 func validateCreateUserRequest(req createUserRequest) error {
@@ -172,4 +220,23 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
+}
+
+func toUserResponse(u *users.User) userResponse {
+	return userResponse{
+		ID:   u.ID,
+		Name: u.Name,
+		Address: userAddressResponse{
+			Line1:    u.AddressLine1,
+			Line2:    u.AddressLine2,
+			Line3:    u.AddressLine3,
+			Town:     u.Town,
+			County:   u.County,
+			Postcode: u.Postcode,
+		},
+		PhoneNumber:      u.PhoneNumber,
+		Email:            u.Email,
+		CreatedTimestamp: u.CreatedAt.UTC().Format(time.RFC3339Nano),
+		UpdatedTimestamp: u.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}
 }

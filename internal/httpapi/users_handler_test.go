@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"eagle-bank-api/internal/auth"
+	"eagle-bank-api/internal/users"
 	"eagle-bank-api/internal/users/memory"
 )
 
@@ -218,5 +221,72 @@ func TestCreateUser_DuplicateEmail_ReturnsConflict(t *testing.T) {
 	}
 	if resp["message"] != "user already exists" {
 		t.Fatalf("message = %q, want user already exists", resp["message"])
+	}
+}
+
+func TestFetchUser_AuthenticatedUserRequestsOwnDetails_ReturnsUser(t *testing.T) {
+	repo := memory.NewRepository()
+	created, err := repo.Create(context.Background(), users.CreateParams{
+		ID:           "usr-fetchself1",
+		Name:         "Alice",
+		AddressLine1: "1 High St",
+		Town:         "London",
+		County:       "Greater London",
+		Postcode:     "SW1A 1AA",
+		PhoneNumber:  "+441234567890",
+		Email:        "alice@example.com",
+		PasswordHash: "not-used-in-this-test",
+	})
+	if err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+	tokenService := auth.NewTokenService("test-secret", time.Hour)
+	token, err := tokenService.Issue(created.ID)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	handler := NewUserHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+created.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+
+	var resp struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Address struct {
+			Line1    string `json:"line1"`
+			Town     string `json:"town"`
+			County   string `json:"county"`
+			Postcode string `json:"postcode"`
+		} `json:"address"`
+		PhoneNumber      string `json:"phoneNumber"`
+		Email            string `json:"email"`
+		CreatedTimestamp string `json:"createdTimestamp"`
+		UpdatedTimestamp string `json:"updatedTimestamp"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, rr.Body.String())
+	}
+	if resp.ID != created.ID {
+		t.Fatalf("id = %q, want %q", resp.ID, created.ID)
+	}
+	if resp.Name != "Alice" || resp.Email != "alice@example.com" || resp.PhoneNumber != "+441234567890" {
+		t.Fatalf("unexpected user response: %+v", resp)
+	}
+	if resp.Address.Line1 != "1 High St" || resp.Address.Town != "London" || resp.Address.County != "Greater London" || resp.Address.Postcode != "SW1A 1AA" {
+		t.Fatalf("unexpected address response: %+v", resp.Address)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, resp.CreatedTimestamp); err != nil {
+		t.Fatalf("createdTimestamp format: %v (%q)", err, resp.CreatedTimestamp)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, resp.UpdatedTimestamp); err != nil {
+		t.Fatalf("updatedTimestamp format: %v (%q)", err, resp.UpdatedTimestamp)
 	}
 }
