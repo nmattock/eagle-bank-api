@@ -46,6 +46,12 @@ type CreateParams struct {
 	Postcode     string
 	PhoneNumber  string
 	Email        string
+	PasswordHash string
+}
+
+type AuthCredentials struct {
+	UserID       string
+	PasswordHash string
 }
 
 // UpdateParams is a partial update (nil means leave unchanged).
@@ -71,6 +77,9 @@ type Repository interface {
 
 	// GetByID returns the user or ErrNotFound.
 	GetByID(ctx context.Context, id string) (*User, error)
+
+	// GetAuthCredentialsByEmail returns password credentials needed to authenticate by email.
+	GetAuthCredentialsByEmail(ctx context.Context, email string) (*AuthCredentials, error)
 
 	// Update applies a partial update and returns the stored row (including new updated_at).
 	// Returns ErrNotFound if id does not exist, or ErrAlreadyExists if email collides.

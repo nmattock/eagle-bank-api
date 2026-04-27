@@ -42,7 +42,13 @@ RETURNING
 `
 
 func (r *UserDb) Create(ctx context.Context, params users.CreateParams) (*users.User, error) {
-	row := r.db.QueryRowContext(ctx, insertUser,
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	row := tx.QueryRowContext(ctx, insertUser,
 		params.ID,
 		params.Name,
 		params.AddressLine1,
@@ -59,6 +65,15 @@ func (r *UserDb) Create(ctx context.Context, params users.CreateParams) (*users.
 		if isUniqueViolation(err) {
 			return nil, users.ErrAlreadyExists
 		}
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO user_credentials (user_id, password_hash) VALUES ($1, $2)`, params.ID, params.PasswordHash); err != nil {
+		if isUniqueViolation(err) {
+			return nil, users.ErrAlreadyExists
+		}
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
 		return nil, err
 	}
 	return u, nil
@@ -85,6 +100,23 @@ func (r *UserDb) GetByID(ctx context.Context, id string) (*users.User, error) {
 		return nil, err
 	}
 	return u, nil
+}
+
+func (r *UserDb) GetAuthCredentialsByEmail(ctx context.Context, email string) (*users.AuthCredentials, error) {
+	var creds users.AuthCredentials
+	err := r.db.QueryRowContext(ctx, `
+SELECT u.id, uc.password_hash
+FROM users u
+JOIN user_credentials uc ON uc.user_id = u.id
+WHERE u.email = $1
+`, email).Scan(&creds.UserID, &creds.PasswordHash)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, users.ErrNotFound
+		}
+		return nil, err
+	}
+	return &creds, nil
 }
 
 func (r *UserDb) Update(ctx context.Context, id string, params users.UpdateParams) (*users.User, error) {

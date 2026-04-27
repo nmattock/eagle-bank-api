@@ -28,3 +28,13 @@ CREATE TABLE users (
 CREATE INDEX idx_users_created_at ON users (created_at);
 
 COMMENT ON TABLE users IS 'Bank customers; fields mirror OpenAPI UserResponse (address nested object flattened to columns).';
+
+-- Authentication credentials are kept separate from profile data.
+CREATE TABLE user_credentials (
+    user_id TEXT PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    password_hash TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+COMMENT ON TABLE user_credentials IS 'Sensitive authentication data for users; never return via user API responses.';

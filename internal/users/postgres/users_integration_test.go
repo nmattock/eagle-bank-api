@@ -56,14 +56,15 @@ func TestRepository_Create_integration(t *testing.T) {
 	})
 
 	u, err := repo.Create(ctx, users.CreateParams{
-		ID:             id,
-		Name:           "Integration User",
-		AddressLine1:   "10 Test St",
-		Town:           "London",
-		County:         "Greater London",
-		Postcode:       "EC1A 1BB",
-		PhoneNumber:    "+441234567890",
-		Email:          email,
+		ID:           id,
+		Name:         "Integration User",
+		AddressLine1: "10 Test St",
+		Town:         "London",
+		County:       "Greater London",
+		Postcode:     "EC1A 1BB",
+		PhoneNumber:  "+441234567890",
+		Email:        email,
+		PasswordHash: "test-password-hash",
 	})
 	if err != nil {
 		t.Fatalf("Create: %v", err)

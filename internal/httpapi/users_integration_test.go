@@ -10,7 +10,9 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
+	"eagle-bank-api/internal/auth"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"eagle-bank-api/internal/users/postgres"
@@ -23,6 +25,73 @@ func integrationDSN(t *testing.T) string {
 		t.Skip("integration tests: set TEST_DATABASE_URL (e.g. postgres://eagle:eagle@localhost:5432/eagle_bank?sslmode=disable)")
 	}
 	return dsn
+}
+
+func TestCreateUserThenAuthenticate_Integration(t *testing.T) {
+	db, err := sql.Open("pgx", integrationDSN(t))
+	if err != nil {
+		t.Fatalf("sql.Open: %v", err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+
+	if err := db.Ping(); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+
+	repo := postgres.NewRepository(db)
+	userHandler := NewUserHandler(repo)
+	tokenService := auth.NewTokenService("integration-secret", time.Hour)
+	authHandler := NewAuthHandler(repo, tokenService)
+	email := "integration-signup-login@example.com"
+	t.Cleanup(func() {
+		_, _ = db.Exec(`DELETE FROM users WHERE email = $1`, email)
+	})
+
+	createReq := httptest.NewRequest(http.MethodPost, "/v1/users", strings.NewReader(`{
+		"name":"Integration User",
+		"address":{"line1":"1 High St","town":"London","county":"Greater London","postcode":"SW1A 1AA"},
+		"phoneNumber":"+441234567890",
+		"email":"integration-signup-login@example.com",
+		"password":"correct horse battery staple"
+	}`))
+	createReq.Header.Set("Content-Type", "application/json")
+	createRecorder := httptest.NewRecorder()
+	userHandler.ServeHTTP(createRecorder, createReq)
+	if createRecorder.Code != http.StatusCreated {
+		t.Fatalf("create status = %d, want %d; body=%s", createRecorder.Code, http.StatusCreated, createRecorder.Body.String())
+	}
+
+	var created struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(createRecorder.Body.Bytes(), &created); err != nil {
+		t.Fatalf("unmarshal create response: %v", err)
+	}
+
+	authReq := httptest.NewRequest(http.MethodPost, "/v1/auth/token", strings.NewReader(`{
+		"email":"integration-signup-login@example.com",
+		"password":"correct horse battery staple"
+	}`))
+	authReq.Header.Set("Content-Type", "application/json")
+	authRecorder := httptest.NewRecorder()
+	authHandler.ServeHTTP(authRecorder, authReq)
+	if authRecorder.Code != http.StatusOK {
+		t.Fatalf("auth status = %d, want %d; body=%s", authRecorder.Code, http.StatusOK, authRecorder.Body.String())
+	}
+
+	var authResp struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(authRecorder.Body.Bytes(), &authResp); err != nil {
+		t.Fatalf("unmarshal auth response: %v", err)
+	}
+	claims, err := tokenService.Verify(authResp.Token)
+	if err != nil {
+		t.Fatalf("verify token: %v", err)
+	}
+	if claims.Subject != created.ID {
+		t.Fatalf("token subject = %q, want %q", claims.Subject, created.ID)
+	}
 }
 
 func TestCreateUser_MissingRequiredFields_Integration(t *testing.T) {
@@ -48,7 +117,8 @@ func TestCreateUser_MissingRequiredFields_Integration(t *testing.T) {
 			body: `{
 				"name":"Integration User",
 				"address":{"line1":"1 High St","town":"London","county":"Greater London","postcode":"SW1A 1AA"},
-				"phoneNumber":"+441234567890"
+				"phoneNumber":"+441234567890",
+				"password":"correct horse battery staple"
 			}`,
 			wantMessage: "email is required",
 		},
@@ -58,7 +128,8 @@ func TestCreateUser_MissingRequiredFields_Integration(t *testing.T) {
 				"name":"Integration User",
 				"address":{"town":"London","county":"Greater London","postcode":"SW1A 1AA"},
 				"phoneNumber":"+441234567890",
-				"email":"integration-user@example.com"
+				"email":"integration-user@example.com",
+				"password":"correct horse battery staple"
 			}`,
 			wantMessage: "address.line1 is required",
 		},
@@ -67,8 +138,6 @@ func TestCreateUser_MissingRequiredFields_Integration(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodPost, "/v1/users", strings.NewReader(tc.body))
-			// Auth is currently only a bearer-token presence check; token validation will be added later.
-			req.Header.Set("Authorization", placeholderBearerToken)
 			req.Header.Set("Content-Type", "application/json")
 			rr := httptest.NewRecorder()
 
@@ -91,4 +160,3 @@ func TestCreateUser_MissingRequiredFields_Integration(t *testing.T) {
 		})
 	}
 }
-

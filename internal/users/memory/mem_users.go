@@ -13,6 +13,7 @@ type UserStore struct {
 	mu        sync.Mutex
 	byID      map[string]*users.User
 	emailToID map[string]string
+	hashByID  map[string]string
 }
 
 // NewRepository returns an empty in-memory store.
@@ -20,6 +21,7 @@ func NewRepository() *UserStore {
 	return &UserStore{
 		byID:      make(map[string]*users.User),
 		emailToID: make(map[string]string),
+		hashByID:  make(map[string]string),
 	}
 }
 
@@ -54,6 +56,7 @@ func (r *UserStore) Create(ctx context.Context, params users.CreateParams) (*use
 	}
 	r.byID[u.ID] = u
 	r.emailToID[u.Email] = u.ID
+	r.hashByID[u.ID] = params.PasswordHash
 	return cloneUser(u), nil
 }
 
@@ -67,6 +70,21 @@ func (r *UserStore) GetByID(ctx context.Context, id string) (*users.User, error)
 		return nil, users.ErrNotFound
 	}
 	return cloneUser(u), nil
+}
+
+func (r *UserStore) GetAuthCredentialsByEmail(ctx context.Context, email string) (*users.AuthCredentials, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	id, ok := r.emailToID[email]
+	if !ok {
+		return nil, users.ErrNotFound
+	}
+	return &users.AuthCredentials{
+		UserID:       id,
+		PasswordHash: r.hashByID[id],
+	}, nil
 }
 
 func (r *UserStore) Update(ctx context.Context, id string, params users.UpdateParams) (*users.User, error) {
@@ -129,6 +147,7 @@ func (r *UserStore) Delete(ctx context.Context, id string) error {
 		return users.ErrNotFound
 	}
 	delete(r.emailToID, u.Email)
+	delete(r.hashByID, id)
 	delete(r.byID, id)
 	return nil
 }

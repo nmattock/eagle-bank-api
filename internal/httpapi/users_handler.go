@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"eagle-bank-api/internal/users"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UserHandler struct {
@@ -33,6 +34,7 @@ type createUserRequest struct {
 	Address     createUserAddressRequest `json:"address"`
 	PhoneNumber string                   `json:"phoneNumber"`
 	Email       string                   `json:"email"`
+	Password    string                   `json:"password"`
 }
 
 type errorResponse struct {
@@ -67,11 +69,6 @@ func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !isAuthenticated(r) {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
-		return
-	}
-
 	var req createUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid JSON"})
@@ -80,6 +77,12 @@ func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if err := validateCreateUserRequest(req); err != nil {
 		writeJSON(w, http.StatusBadRequest, errorResponse{Message: err.Error()})
+		return
+	}
+
+	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
 
@@ -92,6 +95,7 @@ func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		Postcode:     req.Address.Postcode,
 		PhoneNumber:  req.PhoneNumber,
 		Email:        req.Email,
+		PasswordHash: string(passwordHash),
 	}
 	if req.Address.Line2 != "" {
 		line2 := req.Address.Line2
@@ -158,6 +162,9 @@ func validateCreateUserRequest(req createUserRequest) error {
 	if strings.TrimSpace(req.Email) == "" {
 		return errors.New("email is required")
 	}
+	if strings.TrimSpace(req.Password) == "" {
+		return errors.New("password is required")
+	}
 	return nil
 }
 
@@ -166,4 +173,3 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(body)
 }
-

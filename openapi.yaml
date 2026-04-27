@@ -11,6 +11,8 @@ tags:
     description: Manage transactions on a bank account
   - name: user
     description: Manage a user
+  - name: auth
+    description: Authenticate users
 paths:
   /v1/accounts:
     post:
@@ -423,6 +425,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /v1/auth/token:
+    post:
+      tags:
+        - auth
+      description: Authenticate a user and return a JWT bearer token
+      operationId: authenticateUser
+      requestBody:
+        description: Authenticate with user credentials
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthenticateUserRequest'
+        required: true
+      responses:
+        '200':
+          description: Authentication succeeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResponse'
+        '400':
+          description: Invalid details supplied
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '401':
+          description: Email or password is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        '500':
+          description: An unexpected error occurred
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /v1/users:
     post:
       tags:
@@ -783,6 +823,7 @@ components:
         - address
         - phoneNumber
         - email
+        - password
       properties:
         name:
           type: string
@@ -813,7 +854,33 @@ components:
           format: ^\+[1-9]\d{1,14}$
         email:
           type: string
-          format: email    
+          format: email
+        password:
+          type: string
+          format: password
+          minLength: 1
+          writeOnly: true
+    AuthenticateUserRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          format: password
+          writeOnly: true
+    AuthenticationResponse:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: JWT bearer token to pass in the Authorization header
     UpdateUserRequest:
       type: object
       properties:

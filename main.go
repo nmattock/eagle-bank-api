@@ -1,21 +1,49 @@
 package main
 
 import (
-  "fmt"
+	"database/sql"
+	"log"
+	"net/http"
+	"os"
+	"time"
+
+	"eagle-bank-api/internal/auth"
+	"eagle-bank-api/internal/httpapi"
+	"eagle-bank-api/internal/users/postgres"
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-//TIP <p>To run your code, right-click the code and select <b>Run</b>.</p> <p>Alternatively, click
-// the <icon src="AllIcons.Actions.Execute"/> icon in the gutter and select the <b>Run</b> menu item from here.</p>
+const defaultDatabaseURL = "postgres://eagle:eagle@localhost:5432/eagle_bank?sslmode=disable"
 
 func main() {
-  //TIP <p>Press <shortcut actionId="ShowIntentionActions"/> when your caret is at the underlined text
-  // to see how GoLand suggests fixing the warning.</p><p>Alternatively, if available, click the lightbulb to view possible fixes.</p>
-  s := "gopher"
-  fmt.Printf("Hello and welcome, %s!\n", s)
+	dsn := getenv("DATABASE_URL", defaultDatabaseURL)
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		log.Fatalf("open database: %v", err)
+	}
+	defer db.Close()
 
-  for i := 1; i <= 5; i++ {
-	//TIP <p>To start your debugging session, right-click your code in the editor and select the Debug option.</p> <p>We have set one <icon src="AllIcons.Debugger.Db_set_breakpoint"/> breakpoint
-	// for you, but you can always add more by pressing <shortcut actionId="ToggleLineBreakpoint"/>.</p>
-	fmt.Println("i =", 100/i)
-  }
+	if err := db.Ping(); err != nil {
+		log.Fatalf("ping database: %v", err)
+	}
+
+	userRepo := postgres.NewRepository(db)
+	tokenService := auth.NewTokenService(getenv("JWT_SECRET", "dev-secret-change-me"), time.Hour)
+
+	mux := http.NewServeMux()
+	mux.Handle("/v1/users", httpapi.NewUserHandler(userRepo))
+	mux.Handle("/v1/auth/token", httpapi.NewAuthHandler(userRepo, tokenService))
+
+	addr := getenv("HTTP_ADDR", ":8080")
+	log.Printf("listening on %s", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		log.Fatalf("serve: %v", err)
+	}
+}
+
+func getenv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
