@@ -10,6 +10,7 @@ import (
 
 	"eagle-bank-api/internal/auth"
 	"eagle-bank-api/internal/users"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -144,10 +145,6 @@ func (h *UserHandler) handleUserByID(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if claims.Subject != userID {
-		writeJSON(w, http.StatusForbidden, errorResponse{Message: "forbidden"})
-		return
-	}
 
 	u, err := h.repo.GetByID(r.Context(), userID)
 	if err != nil {
@@ -156,6 +153,10 @@ func (h *UserHandler) handleUserByID(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	if claims.Subject != userID {
+		writeJSON(w, http.StatusForbidden, errorResponse{Message: "forbidden"})
 		return
 	}
 	writeJSON(w, http.StatusOK, toUserResponse(u))

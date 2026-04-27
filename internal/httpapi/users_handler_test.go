@@ -290,3 +290,99 @@ func TestFetchUser_AuthenticatedUserRequestsOwnDetails_ReturnsUser(t *testing.T)
 		t.Fatalf("updatedTimestamp format: %v (%q)", err, resp.UpdatedTimestamp)
 	}
 }
+
+func TestFetchUser_AuthenticatedUserRequestsAnotherUser_ReturnsForbidden(t *testing.T) {
+	repo := memory.NewRepository()
+	authenticatedUser, err := repo.Create(context.Background(), users.CreateParams{
+		ID:           "usr-authenticated1",
+		Name:         "Alice",
+		AddressLine1: "1 High St",
+		Town:         "London",
+		County:       "Greater London",
+		Postcode:     "SW1A 1AA",
+		PhoneNumber:  "+441234567890",
+		Email:        "alice@example.com",
+		PasswordHash: "not-used-in-this-test",
+	})
+	if err != nil {
+		t.Fatalf("create authenticated user: %v", err)
+	}
+	otherUser, err := repo.Create(context.Background(), users.CreateParams{
+		ID:           "usr-otheruser1",
+		Name:         "Bob",
+		AddressLine1: "2 High St",
+		Town:         "London",
+		County:       "Greater London",
+		Postcode:     "SW1A 1AB",
+		PhoneNumber:  "+441234567891",
+		Email:        "bob@example.com",
+		PasswordHash: "not-used-in-this-test",
+	})
+	if err != nil {
+		t.Fatalf("create other user: %v", err)
+	}
+	tokenService := auth.NewTokenService("test-secret", time.Hour)
+	token, err := tokenService.Issue(authenticatedUser.ID)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	handler := NewUserHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+otherUser.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusForbidden, rr.Body.String())
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if strings.TrimSpace(resp["message"]) == "" {
+		t.Fatalf("expected non-empty error message")
+	}
+}
+
+func TestFetchUser_AuthenticatedUserRequestsNonExistentUser_ReturnsNotFound(t *testing.T) {
+	repo := memory.NewRepository()
+	authenticatedUser, err := repo.Create(context.Background(), users.CreateParams{
+		ID:           "usr-authenticated2",
+		Name:         "Alice",
+		AddressLine1: "1 High St",
+		Town:         "London",
+		County:       "Greater London",
+		Postcode:     "SW1A 1AA",
+		PhoneNumber:  "+441234567890",
+		Email:        "alice2@example.com",
+		PasswordHash: "not-used-in-this-test",
+	})
+	if err != nil {
+		t.Fatalf("create authenticated user: %v", err)
+	}
+	tokenService := auth.NewTokenService("test-secret", time.Hour)
+	token, err := tokenService.Issue(authenticatedUser.ID)
+	if err != nil {
+		t.Fatalf("issue token: %v", err)
+	}
+
+	handler := NewUserHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodGet, "/v1/users/usr-doesnotexist1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusNotFound, rr.Body.String())
+	}
+	var resp map[string]string
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal response: %v", err)
+	}
+	if strings.TrimSpace(resp["message"]) == "" {
+		t.Fatalf("expected non-empty error message")
+	}
+}
