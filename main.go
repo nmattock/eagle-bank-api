@@ -7,9 +7,10 @@ import (
 	"os"
 	"time"
 
+	accountspostgres "eagle-bank-api/internal/accounts/postgres"
 	"eagle-bank-api/internal/auth"
 	"eagle-bank-api/internal/httpapi"
-	"eagle-bank-api/internal/users/postgres"
+	userspostgres "eagle-bank-api/internal/users/postgres"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -27,10 +28,13 @@ func main() {
 		log.Fatalf("ping database: %v", err)
 	}
 
-	userRepo := postgres.NewRepository(db)
+	userRepo := userspostgres.NewRepository(db)
+	accountRepo := accountspostgres.NewRepository(db)
 	tokenService := auth.NewTokenService(getenv("JWT_SECRET", "dev-secret-change-me"), time.Hour)
 
 	mux := http.NewServeMux()
+	mux.Handle("/v1/accounts", httpapi.NewAccountHandler(accountRepo, tokenService))
+	mux.Handle("/v1/accounts/", httpapi.NewAccountHandler(accountRepo, tokenService))
 	mux.Handle("/v1/users", httpapi.NewUserHandler(userRepo, tokenService))
 	mux.Handle("/v1/users/", httpapi.NewUserHandler(userRepo, tokenService))
 	mux.Handle("/v1/auth/token", httpapi.NewAuthHandler(userRepo, tokenService))
