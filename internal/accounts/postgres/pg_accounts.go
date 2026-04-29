@@ -83,6 +83,61 @@ WHERE account_number = $1
 	return account, nil
 }
 
+func (r *AccountDb) CreateTransaction(ctx context.Context, params accounts.CreateTransactionParams) (*accounts.Transaction, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	var currentBalance float64
+	err = tx.QueryRowContext(ctx, `
+SELECT balance
+FROM bank_accounts
+WHERE account_number = $1
+FOR UPDATE
+`, params.AccountNumber).Scan(&currentBalance)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, accounts.ErrNotFound
+		}
+		return nil, err
+	}
+	if params.Type == "withdrawal" && currentBalance < params.Amount {
+		return nil, accounts.ErrInsufficientFunds
+	}
+
+	transaction, err := scanTransaction(tx.QueryRowContext(ctx, `
+INSERT INTO transactions (id, account_number, user_id, amount, currency, type, reference)
+VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7, ''))
+RETURNING id, account_number, user_id, amount, currency, type, reference, created_at
+`, params.ID, params.AccountNumber, params.UserID, params.Amount, params.Currency, params.Type, params.Reference))
+	if err != nil {
+		if isUniqueViolation(err) {
+			return nil, accounts.ErrAlreadyExists
+		}
+		return nil, err
+	}
+
+	_, err = tx.ExecContext(ctx, `
+UPDATE bank_accounts
+SET balance = CASE
+    WHEN $1 = 'deposit' THEN balance + $2
+    WHEN $1 = 'withdrawal' THEN balance - $2
+    ELSE balance
+END,
+updated_at = now()
+WHERE account_number = $3
+`, params.Type, params.Amount, params.AccountNumber)
+	if err != nil {
+		return nil, err
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return transaction, nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }
@@ -104,6 +159,28 @@ func scanAccount(row rowScanner) (*accounts.BankAccount, error) {
 		return nil, err
 	}
 	return &account, nil
+}
+
+func scanTransaction(row rowScanner) (*accounts.Transaction, error) {
+	var transaction accounts.Transaction
+	var reference sql.NullString
+	err := row.Scan(
+		&transaction.ID,
+		&transaction.AccountNumber,
+		&transaction.UserID,
+		&transaction.Amount,
+		&transaction.Currency,
+		&transaction.Type,
+		&reference,
+		&transaction.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if reference.Valid {
+		transaction.Reference = &reference.String
+	}
+	return &transaction, nil
 }
 
 func isUniqueViolation(err error) bool {

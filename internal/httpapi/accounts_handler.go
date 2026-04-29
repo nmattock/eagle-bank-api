@@ -43,7 +43,28 @@ type listBankAccountsResponse struct {
 	Accounts []bankAccountResponse `json:"accounts"`
 }
 
+type createTransactionRequest struct {
+	Amount    float64 `json:"amount"`
+	Currency  string  `json:"currency"`
+	Type      string  `json:"type"`
+	Reference string  `json:"reference"`
+}
+
+type transactionResponse struct {
+	ID               string  `json:"id"`
+	Amount           float64 `json:"amount"`
+	Currency         string  `json:"currency"`
+	Type             string  `json:"type"`
+	Reference        *string `json:"reference,omitempty"`
+	UserID           string  `json:"userId"`
+	CreatedTimestamp string  `json:"createdTimestamp"`
+}
+
 func (h *AccountHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if strings.HasSuffix(r.URL.Path, "/transactions") && strings.HasPrefix(r.URL.Path, "/v1/accounts/") {
+		h.handleCreateTransaction(w, r)
+		return
+	}
 	if strings.HasPrefix(r.URL.Path, "/v1/accounts/") {
 		h.handleAccountByNumber(w, r)
 		return
@@ -149,6 +170,74 @@ func (h *AccountHandler) handleAccountByNumber(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, toBankAccountResponse(account))
 }
 
+func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	accountNumber := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/accounts/"), "/transactions")
+	if accountNumber == "" || strings.Contains(accountNumber, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	claims, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+
+	account, err := h.repo.GetByAccountNumber(r.Context(), accountNumber)
+	if err != nil {
+		if errors.Is(err, accounts.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	if account.UserID != claims.Subject {
+		writeJSON(w, http.StatusForbidden, errorResponse{Message: "forbidden"})
+		return
+	}
+
+	var req createTransactionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Message: "invalid JSON"})
+		return
+	}
+	if err := validateCreateTransactionRequest(req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Message: err.Error()})
+		return
+	}
+
+	transactionID, err := generateTransactionID()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	transaction, err := h.repo.CreateTransaction(r.Context(), accounts.CreateTransactionParams{
+		ID:            transactionID,
+		AccountNumber: accountNumber,
+		UserID:        claims.Subject,
+		Amount:        req.Amount,
+		Currency:      req.Currency,
+		Type:          req.Type,
+		Reference:     req.Reference,
+	})
+	if err != nil {
+		if errors.Is(err, accounts.ErrInsufficientFunds) {
+			writeJSON(w, http.StatusUnprocessableEntity, errorResponse{Message: "insufficient funds"})
+			return
+		}
+		if errors.Is(err, accounts.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	writeJSON(w, http.StatusCreated, toTransactionResponse(transaction))
+}
+
 func (h *AccountHandler) authenticate(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
 	if h.tokens == nil {
 		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
@@ -180,12 +269,33 @@ func validateCreateBankAccountRequest(req createBankAccountRequest) error {
 	return nil
 }
 
+func validateCreateTransactionRequest(req createTransactionRequest) error {
+	if req.Amount <= 0 {
+		return errors.New("amount is required")
+	}
+	if req.Currency != "GBP" {
+		return errors.New("currency must be GBP")
+	}
+	if req.Type != "deposit" && req.Type != "withdrawal" {
+		return errors.New("type must be deposit or withdrawal")
+	}
+	return nil
+}
+
 func generateAccountNumber() (string, error) {
 	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000))
 	if err != nil {
 		return "", err
 	}
 	return fmt.Sprintf("01%06d", n.Int64()), nil
+}
+
+func generateTransactionID() (string, error) {
+	n, err := rand.Int(rand.Reader, big.NewInt(1_000_000_000))
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("tan-%09d", n.Int64()), nil
 }
 
 func toBankAccountResponse(account *accounts.BankAccount) bankAccountResponse {
@@ -198,5 +308,17 @@ func toBankAccountResponse(account *accounts.BankAccount) bankAccountResponse {
 		Currency:         account.Currency,
 		CreatedTimestamp: account.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedTimestamp: account.UpdatedAt.UTC().Format(time.RFC3339Nano),
+	}
+}
+
+func toTransactionResponse(transaction *accounts.Transaction) transactionResponse {
+	return transactionResponse{
+		ID:               transaction.ID,
+		Amount:           transaction.Amount,
+		Currency:         transaction.Currency,
+		Type:             transaction.Type,
+		Reference:        transaction.Reference,
+		UserID:           transaction.UserID,
+		CreatedTimestamp: transaction.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
 }

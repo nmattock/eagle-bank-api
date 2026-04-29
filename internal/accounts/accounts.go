@@ -8,6 +8,7 @@ import (
 
 var ErrAlreadyExists = errors.New("bank account already exists")
 var ErrNotFound = errors.New("bank account not found")
+var ErrInsufficientFunds = errors.New("insufficient funds")
 
 type BankAccount struct {
 	AccountNumber string
@@ -28,8 +29,30 @@ type CreateParams struct {
 	AccountType   string
 }
 
+type Transaction struct {
+	ID            string
+	AccountNumber string
+	UserID        string
+	Amount        float64
+	Currency      string
+	Type          string
+	Reference     *string
+	CreatedAt     time.Time
+}
+
+type CreateTransactionParams struct {
+	ID            string
+	AccountNumber string
+	UserID        string
+	Amount        float64
+	Currency      string
+	Type          string
+	Reference     string
+}
+
 type Repository interface {
 	Create(ctx context.Context, params CreateParams) (*BankAccount, error)
 	ListByUserID(ctx context.Context, userID string) ([]*BankAccount, error)
 	GetByAccountNumber(ctx context.Context, accountNumber string) (*BankAccount, error)
+	CreateTransaction(ctx context.Context, params CreateTransactionParams) (*Transaction, error)
 }

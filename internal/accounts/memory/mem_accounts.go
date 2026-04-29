@@ -12,10 +12,14 @@ import (
 type AccountStore struct {
 	mu              sync.Mutex
 	byAccountNumber map[string]*accounts.BankAccount
+	transactions    map[string]*accounts.Transaction
 }
 
 func NewRepository() *AccountStore {
-	return &AccountStore{byAccountNumber: make(map[string]*accounts.BankAccount)}
+	return &AccountStore{
+		byAccountNumber: make(map[string]*accounts.BankAccount),
+		transactions:    make(map[string]*accounts.Transaction),
+	}
 }
 
 var _ accounts.Repository = (*AccountStore)(nil)
@@ -73,7 +77,61 @@ func (r *AccountStore) GetByAccountNumber(ctx context.Context, accountNumber str
 	return cloneAccount(account), nil
 }
 
+func (r *AccountStore) CreateTransaction(ctx context.Context, params accounts.CreateTransactionParams) (*accounts.Transaction, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.transactions[params.ID]; ok {
+		return nil, accounts.ErrAlreadyExists
+	}
+	account, ok := r.byAccountNumber[params.AccountNumber]
+	if !ok {
+		return nil, accounts.ErrNotFound
+	}
+
+	switch params.Type {
+	case "deposit":
+		account.Balance += params.Amount
+	case "withdrawal":
+		if account.Balance < params.Amount {
+			return nil, accounts.ErrInsufficientFunds
+		}
+		account.Balance -= params.Amount
+	default:
+		return nil, accounts.ErrNotFound
+	}
+	account.UpdatedAt = time.Now().UTC()
+
+	var reference *string
+	if params.Reference != "" {
+		v := params.Reference
+		reference = &v
+	}
+	transaction := &accounts.Transaction{
+		ID:            params.ID,
+		AccountNumber: params.AccountNumber,
+		UserID:        params.UserID,
+		Amount:        params.Amount,
+		Currency:      params.Currency,
+		Type:          params.Type,
+		Reference:     reference,
+		CreatedAt:     time.Now().UTC(),
+	}
+	r.transactions[transaction.ID] = transaction
+	return cloneTransaction(transaction), nil
+}
+
 func cloneAccount(account *accounts.BankAccount) *accounts.BankAccount {
 	out := *account
+	return &out
+}
+
+func cloneTransaction(transaction *accounts.Transaction) *accounts.Transaction {
+	out := *transaction
+	if transaction.Reference != nil {
+		v := *transaction.Reference
+		out.Reference = &v
+	}
 	return &out
 }

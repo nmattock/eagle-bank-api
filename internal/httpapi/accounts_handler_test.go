@@ -187,6 +187,92 @@ func TestFetchBankAccount_AuthenticatedUserRequestsNonExistentAccount_ReturnsNot
 	assertErrorMessage(t, rr.Body.Bytes())
 }
 
+func TestCreateTransaction_AuthenticatedOwnerDepositsMoney_ReturnsTransactionAndUpdatesBalance(t *testing.T) {
+	owner, tokenService, token := testAuthenticatedUser(t, "usr-depositowner1")
+	repo := memory.NewRepository()
+	account := createTestAccount(t, repo, accounts.CreateParams{
+		AccountNumber: "01000101",
+		UserID:        owner.ID,
+		Name:          "Personal Bank Account",
+		AccountType:   "personal",
+	})
+
+	handler := NewAccountHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.AccountNumber+"/transactions", strings.NewReader(`{
+		"amount":25.50,
+		"currency":"GBP",
+		"type":"deposit",
+		"reference":"Payday"
+	}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+	assertTransactionResponse(t, rr.Body.Bytes(), "deposit", 25.50, "Payday", owner.ID)
+
+	updatedAccount, err := repo.GetByAccountNumber(context.Background(), account.AccountNumber)
+	if err != nil {
+		t.Fatalf("get updated account: %v", err)
+	}
+	if updatedAccount.Balance != 25.50 {
+		t.Fatalf("balance = %v, want 25.50", updatedAccount.Balance)
+	}
+}
+
+func TestCreateTransaction_AuthenticatedOwnerWithdrawsMoney_ReturnsTransactionAndUpdatesBalance(t *testing.T) {
+	owner, tokenService, token := testAuthenticatedUser(t, "usr-withdrawowner1")
+	repo := memory.NewRepository()
+	account := createTestAccount(t, repo, accounts.CreateParams{
+		AccountNumber: "01000102",
+		UserID:        owner.ID,
+		Name:          "Personal Bank Account",
+		AccountType:   "personal",
+	})
+	_, err := repo.CreateTransaction(context.Background(), accounts.CreateTransactionParams{
+		ID:            "tan-seedfunds1",
+		AccountNumber: account.AccountNumber,
+		UserID:        owner.ID,
+		Amount:        100,
+		Currency:      "GBP",
+		Type:          "deposit",
+		Reference:     "Seed funds",
+	})
+	if err != nil {
+		t.Fatalf("seed deposit: %v", err)
+	}
+
+	handler := NewAccountHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.AccountNumber+"/transactions", strings.NewReader(`{
+		"amount":30.25,
+		"currency":"GBP",
+		"type":"withdrawal",
+		"reference":"Groceries"
+	}`))
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+	assertTransactionResponse(t, rr.Body.Bytes(), "withdrawal", 30.25, "Groceries", owner.ID)
+
+	updatedAccount, err := repo.GetByAccountNumber(context.Background(), account.AccountNumber)
+	if err != nil {
+		t.Fatalf("get updated account: %v", err)
+	}
+	if updatedAccount.Balance != 69.75 {
+		t.Fatalf("balance = %v, want 69.75", updatedAccount.Balance)
+	}
+}
+
 func testAuthenticatedUser(t *testing.T, id string) (*users.User, *auth.TokenService, string) {
 	t.Helper()
 	userRepo := usersmemory.NewRepository()
@@ -249,5 +335,42 @@ func assertErrorMessage(t *testing.T, body []byte) {
 	}
 	if strings.TrimSpace(resp["message"]) == "" {
 		t.Fatalf("expected non-empty error message")
+	}
+}
+
+func assertTransactionResponse(t *testing.T, body []byte, wantType string, wantAmount float64, wantReference string, wantUserID string) {
+	t.Helper()
+	var resp struct {
+		ID               string  `json:"id"`
+		Amount           float64 `json:"amount"`
+		Currency         string  `json:"currency"`
+		Type             string  `json:"type"`
+		Reference        string  `json:"reference"`
+		UserID           string  `json:"userId"`
+		CreatedTimestamp string  `json:"createdTimestamp"`
+	}
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, string(body))
+	}
+	if !strings.HasPrefix(resp.ID, "tan-") {
+		t.Fatalf("id = %q, want tan- prefix", resp.ID)
+	}
+	if resp.Amount != wantAmount {
+		t.Fatalf("amount = %v, want %v", resp.Amount, wantAmount)
+	}
+	if resp.Currency != "GBP" {
+		t.Fatalf("currency = %q, want GBP", resp.Currency)
+	}
+	if resp.Type != wantType {
+		t.Fatalf("type = %q, want %q", resp.Type, wantType)
+	}
+	if resp.Reference != wantReference {
+		t.Fatalf("reference = %q, want %q", resp.Reference, wantReference)
+	}
+	if resp.UserID != wantUserID {
+		t.Fatalf("userId = %q, want %q", resp.UserID, wantUserID)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, resp.CreatedTimestamp); err != nil {
+		t.Fatalf("createdTimestamp format: %v (%q)", err, resp.CreatedTimestamp)
 	}
 }
