@@ -74,9 +74,115 @@ func TestCreateBankAccount_AuthenticatedValidRequest_ReturnsCreatedAccount(t *te
 	}
 }
 
+func TestCreateBankAccount_AuthenticatedUserMissingRequiredData_ReturnsBadRequest(t *testing.T) {
+	_, tokenService, token := testAuthenticatedUser(t, "usr-createaccountvalidation1")
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(memory.NewRepository()))
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "missing name",
+			body: `{"accountType":"personal"}`,
+		},
+		{
+			name: "missing accountType",
+			body: `{"name":"Personal Bank Account"}`,
+		},
+		{
+			name: "invalid accountType",
+			body: `{"name":"Personal Bank Account","accountType":"business"}`,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/accounts", strings.NewReader(tc.body))
+			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Content-Type", "application/json")
+			rr := httptest.NewRecorder()
+
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusBadRequest, rr.Body.String())
+			}
+			assertErrorMessage(t, rr.Body.Bytes())
+		})
+	}
+}
+
+func TestAccountsEndpoints_UnauthenticatedOrInvalidToken_ReturnsUnauthorized(t *testing.T) {
+	tokenService := auth.NewTokenService("test-secret", time.Hour)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(memory.NewRepository()))
+
+	tests := []struct {
+		name          string
+		method        string
+		path          string
+		body          string
+		authHeader    string
+		contentType   string
+		expectedCode  int
+	}{
+		{
+			name:         "create account missing token",
+			method:       http.MethodPost,
+			path:         "/v1/accounts",
+			body:         `{"name":"Personal Bank Account","accountType":"personal"}`,
+			contentType:  "application/json",
+			expectedCode: http.StatusUnauthorized,
+		},
+		{
+			name:         "list accounts missing token",
+			method:       http.MethodGet,
+			path:         "/v1/accounts",
+			expectedCode: http.StatusUnauthorized,
+		},
+		{
+			name:         "fetch account invalid token",
+			method:       http.MethodGet,
+			path:         "/v1/accounts/01000001",
+			authHeader:   "Bearer not-a-valid-token",
+			expectedCode: http.StatusUnauthorized,
+		},
+		{
+			name:         "create transaction malformed auth header",
+			method:       http.MethodPost,
+			path:         "/v1/accounts/01000001/transactions",
+			body:         `{"amount":10.00,"currency":"GBP","type":"deposit"}`,
+			authHeader:   "Token abc123",
+			contentType:  "application/json",
+			expectedCode: http.StatusUnauthorized,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			if tc.authHeader != "" {
+				req.Header.Set("Authorization", tc.authHeader)
+			}
+			if tc.contentType != "" {
+				req.Header.Set("Content-Type", tc.contentType)
+			}
+			rr := httptest.NewRecorder()
+
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != tc.expectedCode {
+				t.Fatalf("status = %d, want %d; body=%s", rr.Code, tc.expectedCode, rr.Body.String())
+			}
+			assertErrorMessage(t, rr.Body.Bytes())
+		})
+	}
+}
+
 func TestListBankAccounts_AuthenticatedUser_ReturnsTheirAccounts(t *testing.T) {
-	owner, tokenService, token := testAuthenticatedUser(t, "usr-listowner1")
-	otherUser, _, _ := testAuthenticatedUser(t, "usr-listother1")
+	fixture := newAuthTestFixture()
+	owner, token := fixture.createUser(t, "usr-listowner1")
+	otherUser, _ := fixture.createUser(t, "usr-listother1")
 	repo := memory.NewRepository()
 	ownAccount1 := createTestAccount(t, repo, accounts.CreateParams{
 		AccountNumber: "01000001",
@@ -97,7 +203,7 @@ func TestListBankAccounts_AuthenticatedUser_ReturnsTheirAccounts(t *testing.T) {
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
+	handler := AuthMiddleware(fixture.tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -149,8 +255,9 @@ func TestFetchBankAccount_AuthenticatedOwner_ReturnsAccount(t *testing.T) {
 }
 
 func TestFetchBankAccount_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
-	owner, _, _ := testAuthenticatedUser(t, "usr-accountowner2")
-	_, tokenService, token := testAuthenticatedUser(t, "usr-accountintruder1")
+	fixture := newAuthTestFixture()
+	owner, _ := fixture.createUser(t, "usr-accountowner2")
+	_, token := fixture.createUser(t, "usr-accountintruder1")
 	repo := memory.NewRepository()
 	account := createTestAccount(t, repo, accounts.CreateParams{
 		AccountNumber: "01000021",
@@ -159,7 +266,7 @@ func TestFetchBankAccount_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
+	handler := AuthMiddleware(fixture.tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -311,8 +418,9 @@ func TestCreateTransaction_AuthenticatedOwnerWithdrawsWithInsufficientFunds_Retu
 }
 
 func TestCreateTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
-	owner, _, _ := testAuthenticatedUser(t, "usr-transactionowner1")
-	_, tokenService, token := testAuthenticatedUser(t, "usr-transactionintruder1")
+	fixture := newAuthTestFixture()
+	owner, _ := fixture.createUser(t, "usr-transactionowner1")
+	_, token := fixture.createUser(t, "usr-transactionintruder1")
 	repo := memory.NewRepository()
 	account := createTestAccount(t, repo, accounts.CreateParams{
 		AccountNumber: "01000104",
@@ -321,7 +429,7 @@ func TestCreateTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) 
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
+	handler := AuthMiddleware(fixture.tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.AccountNumber+"/transactions", strings.NewReader(`{
 		"amount":10.00,
 		"currency":"GBP",
@@ -465,8 +573,9 @@ func TestListTransactions_AuthenticatedOwner_ReturnsTransactions(t *testing.T) {
 }
 
 func TestListTransactions_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
-	owner, _, _ := testAuthenticatedUser(t, "usr-listtransactionsowner1")
-	_, tokenService, token := testAuthenticatedUser(t, "usr-listtransactionsintruder1")
+	fixture := newAuthTestFixture()
+	owner, _ := fixture.createUser(t, "usr-listtransactionsowner1")
+	_, token := fixture.createUser(t, "usr-listtransactionsintruder1")
 	repo := memory.NewRepository()
 	account := createTestAccount(t, repo, accounts.CreateParams{
 		AccountNumber: "01000107",
@@ -483,7 +592,7 @@ func TestListTransactions_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		Type:          accounts.TransactionTypeDeposit,
 	})
 
-	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
+	handler := AuthMiddleware(fixture.tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -544,8 +653,9 @@ func TestFetchTransaction_AuthenticatedOwner_ReturnsTransaction(t *testing.T) {
 }
 
 func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
-	owner, _, _ := testAuthenticatedUser(t, "usr-fetchtransactionowner1")
-	_, tokenService, token := testAuthenticatedUser(t, "usr-fetchtransactionintruder1")
+	fixture := newAuthTestFixture()
+	owner, _ := fixture.createUser(t, "usr-fetchtransactionowner1")
+	_, token := fixture.createUser(t, "usr-fetchtransactionintruder1")
 	repo := memory.NewRepository()
 	account := createTestAccount(t, repo, accounts.CreateParams{
 		AccountNumber: "01000109",
@@ -562,7 +672,7 @@ func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		Type:          accounts.TransactionTypeDeposit,
 	})
 
-	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
+	handler := AuthMiddleware(fixture.tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions/"+transaction.ID, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -730,10 +840,169 @@ func TestPenceConversion_RoundTrip(t *testing.T) {
 	})
 }
 
-func testAuthenticatedUser(t *testing.T, id string) (*users.User, *auth.TokenService, string) {
-	t.Helper()
+func TestEndToEnd_UserSignupAuthAccountAndTransactionsFlow(t *testing.T) {
 	userRepo := usersmemory.NewRepository()
-	createdUser, err := userRepo.Create(context.Background(), users.CreateParams{
+	accountRepo := memory.NewRepository()
+	tokenService := auth.NewTokenService("test-secret", time.Hour)
+	requireAuth := AuthMiddleware(tokenService)
+
+	mux := http.NewServeMux()
+	mux.Handle("/v1/users", NewUserHandler(userRepo))
+	mux.Handle("/v1/users/", requireAuth(NewUserHandler(userRepo)))
+	mux.Handle("/v1/auth/token", NewAuthHandler(userRepo, tokenService))
+	mux.Handle("/v1/accounts", requireAuth(NewAccountHandler(accountRepo)))
+	mux.Handle("/v1/accounts/", requireAuth(NewAccountHandler(accountRepo)))
+
+	signupReq := httptest.NewRequest(http.MethodPost, "/v1/users", strings.NewReader(`{
+		"name":"E2E User",
+		"address":{"line1":"1 High St","town":"London","county":"Greater London","postcode":"SW1A 1AA"},
+		"phoneNumber":"+441234567890",
+		"email":"e2e@example.com",
+		"password":"correct horse battery staple"
+	}`))
+	signupReq.Header.Set("Content-Type", "application/json")
+	signupRR := httptest.NewRecorder()
+	mux.ServeHTTP(signupRR, signupReq)
+	if signupRR.Code != http.StatusCreated {
+		t.Fatalf("signup status = %d, want %d; body=%s", signupRR.Code, http.StatusCreated, signupRR.Body.String())
+	}
+
+	var signupResp struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(signupRR.Body.Bytes(), &signupResp); err != nil {
+		t.Fatalf("unmarshal signup response: %v body=%s", err, signupRR.Body.String())
+	}
+	if signupResp.ID == "" {
+		t.Fatalf("expected non-empty user id")
+	}
+
+	authReq := httptest.NewRequest(http.MethodPost, "/v1/auth/token", strings.NewReader(`{
+		"email":"e2e@example.com",
+		"password":"correct horse battery staple"
+	}`))
+	authReq.Header.Set("Content-Type", "application/json")
+	authRR := httptest.NewRecorder()
+	mux.ServeHTTP(authRR, authReq)
+	if authRR.Code != http.StatusOK {
+		t.Fatalf("auth status = %d, want %d; body=%s", authRR.Code, http.StatusOK, authRR.Body.String())
+	}
+
+	var authResp struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal(authRR.Body.Bytes(), &authResp); err != nil {
+		t.Fatalf("unmarshal auth response: %v body=%s", err, authRR.Body.String())
+	}
+	if authResp.Token == "" {
+		t.Fatalf("expected non-empty token")
+	}
+
+	createAccountReq := httptest.NewRequest(http.MethodPost, "/v1/accounts", strings.NewReader(`{
+		"name":"E2E Personal Account",
+		"accountType":"personal"
+	}`))
+	createAccountReq.Header.Set("Authorization", "Bearer "+authResp.Token)
+	createAccountReq.Header.Set("Content-Type", "application/json")
+	createAccountRR := httptest.NewRecorder()
+	mux.ServeHTTP(createAccountRR, createAccountReq)
+	if createAccountRR.Code != http.StatusCreated {
+		t.Fatalf("create account status = %d, want %d; body=%s", createAccountRR.Code, http.StatusCreated, createAccountRR.Body.String())
+	}
+
+	var createAccountResp struct {
+		AccountNumber string  `json:"accountNumber"`
+		Balance       float64 `json:"balance"`
+	}
+	if err := json.Unmarshal(createAccountRR.Body.Bytes(), &createAccountResp); err != nil {
+		t.Fatalf("unmarshal create account response: %v body=%s", err, createAccountRR.Body.String())
+	}
+	if createAccountResp.AccountNumber == "" {
+		t.Fatalf("expected non-empty account number")
+	}
+	if createAccountResp.Balance != 0 {
+		t.Fatalf("initial balance = %v, want 0", createAccountResp.Balance)
+	}
+
+	depositReq := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+createAccountResp.AccountNumber+"/transactions", strings.NewReader(`{
+		"amount":50.00,
+		"currency":"GBP",
+		"type":"deposit",
+		"reference":"Top up"
+	}`))
+	depositReq.Header.Set("Authorization", "Bearer "+authResp.Token)
+	depositReq.Header.Set("Content-Type", "application/json")
+	depositRR := httptest.NewRecorder()
+	mux.ServeHTTP(depositRR, depositReq)
+	if depositRR.Code != http.StatusCreated {
+		t.Fatalf("deposit status = %d, want %d; body=%s", depositRR.Code, http.StatusCreated, depositRR.Body.String())
+	}
+
+	withdrawReq := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+createAccountResp.AccountNumber+"/transactions", strings.NewReader(`{
+		"amount":20.00,
+		"currency":"GBP",
+		"type":"withdrawal",
+		"reference":"ATM"
+	}`))
+	withdrawReq.Header.Set("Authorization", "Bearer "+authResp.Token)
+	withdrawReq.Header.Set("Content-Type", "application/json")
+	withdrawRR := httptest.NewRecorder()
+	mux.ServeHTTP(withdrawRR, withdrawReq)
+	if withdrawRR.Code != http.StatusCreated {
+		t.Fatalf("withdraw status = %d, want %d; body=%s", withdrawRR.Code, http.StatusCreated, withdrawRR.Body.String())
+	}
+
+	fetchAccountReq := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+createAccountResp.AccountNumber, nil)
+	fetchAccountReq.Header.Set("Authorization", "Bearer "+authResp.Token)
+	fetchAccountRR := httptest.NewRecorder()
+	mux.ServeHTTP(fetchAccountRR, fetchAccountReq)
+	if fetchAccountRR.Code != http.StatusOK {
+		t.Fatalf("fetch account status = %d, want %d; body=%s", fetchAccountRR.Code, http.StatusOK, fetchAccountRR.Body.String())
+	}
+
+	var fetchAccountResp struct {
+		Balance float64 `json:"balance"`
+	}
+	if err := json.Unmarshal(fetchAccountRR.Body.Bytes(), &fetchAccountResp); err != nil {
+		t.Fatalf("unmarshal fetch account response: %v body=%s", err, fetchAccountRR.Body.String())
+	}
+	if fetchAccountResp.Balance != 30.00 {
+		t.Fatalf("final balance = %v, want 30.00", fetchAccountResp.Balance)
+	}
+
+	listTransactionsReq := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+createAccountResp.AccountNumber+"/transactions", nil)
+	listTransactionsReq.Header.Set("Authorization", "Bearer "+authResp.Token)
+	listTransactionsRR := httptest.NewRecorder()
+	mux.ServeHTTP(listTransactionsRR, listTransactionsReq)
+	if listTransactionsRR.Code != http.StatusOK {
+		t.Fatalf("list transactions status = %d, want %d; body=%s", listTransactionsRR.Code, http.StatusOK, listTransactionsRR.Body.String())
+	}
+	var listTransactionsResp struct {
+		Transactions []transactionResponse `json:"transactions"`
+	}
+	if err := json.Unmarshal(listTransactionsRR.Body.Bytes(), &listTransactionsResp); err != nil {
+		t.Fatalf("unmarshal list transactions response: %v body=%s", err, listTransactionsRR.Body.String())
+	}
+	if len(listTransactionsResp.Transactions) != 2 {
+		t.Fatalf("transactions len = %d, want 2", len(listTransactionsResp.Transactions))
+	}
+}
+
+type authTestFixture struct {
+	userRepo      users.Repository
+	tokenService  *auth.TokenService
+}
+
+func newAuthTestFixture() *authTestFixture {
+	return &authTestFixture{
+		userRepo:     usersmemory.NewRepository(),
+		tokenService: auth.NewTokenService("test-secret", time.Hour),
+	}
+}
+
+func (f *authTestFixture) createUser(t *testing.T, id string) (*users.User, string) {
+	t.Helper()
+	createdUser, err := f.userRepo.Create(context.Background(), users.CreateParams{
 		ID:           id,
 		Name:         "Alice",
 		AddressLine1: "1 High St",
@@ -747,12 +1016,18 @@ func testAuthenticatedUser(t *testing.T, id string) (*users.User, *auth.TokenSer
 	if err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	tokenService := auth.NewTokenService("test-secret", time.Hour)
-	token, err := tokenService.Issue(createdUser.ID)
+	token, err := f.tokenService.Issue(createdUser.ID)
 	if err != nil {
 		t.Fatalf("issue token: %v", err)
 	}
-	return createdUser, tokenService, token
+	return createdUser, token
+}
+
+func testAuthenticatedUser(t *testing.T, id string) (*users.User, *auth.TokenService, string) {
+	t.Helper()
+	fixture := newAuthTestFixture()
+	user, token := fixture.createUser(t, id)
+	return user, fixture.tokenService, token
 }
 
 func createTestAccount(t *testing.T, repo accounts.Repository, params accounts.CreateParams) *accounts.BankAccount {
