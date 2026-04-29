@@ -3,11 +3,13 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
 
 	"eagle-bank-api/internal/users"
+
 	"github.com/google/uuid"
 
 	"golang.org/x/crypto/bcrypt"
@@ -87,6 +89,7 @@ func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	passwordHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to hash password", "error", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -117,6 +120,7 @@ func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusConflict, errorResponse{Message: "user already exists"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to create user", "error", err, "email", req.Email)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -143,6 +147,7 @@ func (h *UserHandler) handleUserByID(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusNotFound, errorResponse{Message: "user not found"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to fetch user", "error", err, "user_id", userID, "requester_user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}

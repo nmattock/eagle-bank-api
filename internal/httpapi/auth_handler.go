@@ -3,11 +3,13 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
 	"eagle-bank-api/internal/auth"
 	"eagle-bank-api/internal/users"
+
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -59,6 +61,7 @@ func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "invalid credentials"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to fetch auth credentials", "error", err, "email", req.Email)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -69,6 +72,7 @@ func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.tokens.Issue(creds.UserID)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to issue auth token", "error", err, "user_id", creds.UserID)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math"
 	"math/big"
 	"net/http"
@@ -126,6 +127,7 @@ func (h *AccountHandler) handleCreateAccount(w http.ResponseWriter, r *http.Requ
 
 	accountNumber, err := generateAccountNumber()
 	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to generate account number", "error", err)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -140,6 +142,7 @@ func (h *AccountHandler) handleCreateAccount(w http.ResponseWriter, r *http.Requ
 			writeJSON(w, http.StatusConflict, errorResponse{Message: "bank account already exists"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to create bank account", "error", err, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -151,6 +154,7 @@ func (h *AccountHandler) handleListAccounts(w http.ResponseWriter, r *http.Reque
 	claims := ClaimsFromContext(r.Context())
 	accountsForUser, err := h.repo.ListByUserID(r.Context(), claims.Subject)
 	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to list bank accounts", "error", err, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -179,6 +183,7 @@ func (h *AccountHandler) handleAccountByNumber(w http.ResponseWriter, r *http.Re
 			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to fetch bank account", "error", err, "account_number", accountNumber, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -198,6 +203,7 @@ func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.
 			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to fetch bank account for transaction", "error", err, "account_number", accountNumber, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -218,6 +224,7 @@ func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.
 
 	transactionID, err := generateTransactionID()
 	if err != nil {
+		slog.ErrorContext(r.Context(), "failed to generate transaction id", "error", err, "account_number", accountNumber, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -239,6 +246,7 @@ func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.
 			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to create transaction", "error", err, "account_number", accountNumber, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -254,6 +262,7 @@ func (h *AccountHandler) handleListTransactions(w http.ResponseWriter, r *http.R
 			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to fetch bank account for transaction list", "error", err, "account_number", accountNumber, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -268,6 +277,7 @@ func (h *AccountHandler) handleListTransactions(w http.ResponseWriter, r *http.R
 			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to list transactions", "error", err, "account_number", accountNumber, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -287,6 +297,7 @@ func (h *AccountHandler) handleFetchTransaction(w http.ResponseWriter, r *http.R
 			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to fetch bank account for transaction lookup", "error", err, "account_number", accountNumber, "transaction_id", transactionID, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
@@ -301,6 +312,7 @@ func (h *AccountHandler) handleFetchTransaction(w http.ResponseWriter, r *http.R
 			writeJSON(w, http.StatusNotFound, errorResponse{Message: "transaction not found"})
 			return
 		}
+		slog.ErrorContext(r.Context(), "failed to fetch transaction", "error", err, "account_number", accountNumber, "transaction_id", transactionID, "user_id", claims.Subject)
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
 		return
 	}
