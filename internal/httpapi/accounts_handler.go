@@ -65,7 +65,7 @@ type listTransactionsResponse struct {
 }
 
 func (h *AccountHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasSuffix(r.URL.Path, "/transactions") && strings.HasPrefix(r.URL.Path, "/v1/accounts/") {
+	if strings.HasPrefix(r.URL.Path, "/v1/accounts/") && strings.Contains(r.URL.Path, "/transactions") {
 		h.handleAccountTransactions(w, r)
 		return
 	}
@@ -88,11 +88,25 @@ func (h *AccountHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AccountHandler) handleAccountTransactions(w http.ResponseWriter, r *http.Request) {
+	accountNumber, transactionID, ok := parseAccountTransactionPath(r.URL.Path)
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+
 	switch r.Method {
 	case http.MethodPost:
-		h.handleCreateTransaction(w, r)
+		if transactionID != "" {
+			http.NotFound(w, r)
+			return
+		}
+		h.handleCreateTransaction(w, r, accountNumber)
 	case http.MethodGet:
-		h.handleListTransactions(w, r)
+		if transactionID == "" {
+			h.handleListTransactions(w, r, accountNumber)
+			return
+		}
+		h.handleFetchTransaction(w, r, accountNumber, transactionID)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -185,16 +199,7 @@ func (h *AccountHandler) handleAccountByNumber(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, toBankAccountResponse(account))
 }
 
-func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	accountNumber := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/accounts/"), "/transactions")
-	if accountNumber == "" || strings.Contains(accountNumber, "/") {
-		http.NotFound(w, r)
-		return
-	}
+func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.Request, accountNumber string) {
 	claims, ok := h.authenticate(w, r)
 	if !ok {
 		return
@@ -253,12 +258,7 @@ func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.
 	writeJSON(w, http.StatusCreated, toTransactionResponse(transaction))
 }
 
-func (h *AccountHandler) handleListTransactions(w http.ResponseWriter, r *http.Request) {
-	accountNumber := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/accounts/"), "/transactions")
-	if accountNumber == "" || strings.Contains(accountNumber, "/") {
-		http.NotFound(w, r)
-		return
-	}
+func (h *AccountHandler) handleListTransactions(w http.ResponseWriter, r *http.Request, accountNumber string) {
 	claims, ok := h.authenticate(w, r)
 	if !ok {
 		return
@@ -294,6 +294,42 @@ func (h *AccountHandler) handleListTransactions(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusOK, resp)
 }
 
+func (h *AccountHandler) handleFetchTransaction(w http.ResponseWriter, r *http.Request, accountNumber string, transactionID string) {
+	claims, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+
+	account, err := h.repo.GetByAccountNumber(r.Context(), accountNumber)
+	if err != nil {
+		if errors.Is(err, accounts.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	if account.UserID != claims.Subject {
+		writeJSON(w, http.StatusForbidden, errorResponse{Message: "forbidden"})
+		return
+	}
+
+	transaction, err := h.repo.GetTransactionByID(r.Context(), transactionID)
+	if err != nil {
+		if errors.Is(err, accounts.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{Message: "transaction not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	if transaction.AccountNumber != accountNumber {
+		writeJSON(w, http.StatusNotFound, errorResponse{Message: "transaction not found"})
+		return
+	}
+	writeJSON(w, http.StatusOK, toTransactionResponse(transaction))
+}
+
 func (h *AccountHandler) authenticate(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
 	if h.tokens == nil {
 		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
@@ -310,6 +346,27 @@ func (h *AccountHandler) authenticate(w http.ResponseWriter, r *http.Request) (*
 		return nil, false
 	}
 	return claims, true
+}
+
+func parseAccountTransactionPath(path string) (string, string, bool) {
+	rest := strings.TrimPrefix(path, "/v1/accounts/")
+	parts := strings.Split(rest, "/")
+	if len(parts) != 2 && len(parts) != 3 {
+		return "", "", false
+	}
+	if parts[0] == "" || parts[1] != "transactions" {
+		return "", "", false
+	}
+	if len(parts) == 3 && parts[2] == "" {
+		return "", "", false
+	}
+	if strings.Contains(parts[0], "/") {
+		return "", "", false
+	}
+	if len(parts) == 2 {
+		return parts[0], "", true
+	}
+	return parts[0], parts[2], true
 }
 
 func validateCreateBankAccountRequest(req createBankAccountRequest) error {

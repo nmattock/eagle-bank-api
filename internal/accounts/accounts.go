@@ -56,4 +56,5 @@ type Repository interface {
 	GetByAccountNumber(ctx context.Context, accountNumber string) (*BankAccount, error)
 	CreateTransaction(ctx context.Context, params CreateTransactionParams) (*Transaction, error)
 	ListTransactionsByAccountNumber(ctx context.Context, accountNumber string) ([]*Transaction, error)
+	GetTransactionByID(ctx context.Context, id string) (*Transaction, error)
 }

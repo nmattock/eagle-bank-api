@@ -173,6 +173,21 @@ ORDER BY created_at ASC, id ASC
 	return result, nil
 }
 
+func (r *AccountDb) GetTransactionByID(ctx context.Context, id string) (*accounts.Transaction, error) {
+	transaction, err := scanTransaction(r.db.QueryRowContext(ctx, `
+SELECT id, account_number, user_id, amount, currency, type, reference, created_at
+FROM transactions
+WHERE id = $1
+`, id))
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, accounts.ErrNotFound
+		}
+		return nil, err
+	}
+	return transaction, nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }

@@ -511,6 +511,145 @@ func TestListTransactions_AuthenticatedUserRequestsNonExistentAccount_ReturnsNot
 	assertErrorMessage(t, rr.Body.Bytes())
 }
 
+func TestFetchTransaction_AuthenticatedOwner_ReturnsTransaction(t *testing.T) {
+	owner, tokenService, token := testAuthenticatedUser(t, "usr-fetchtransaction1")
+	repo := memory.NewRepository()
+	account := createTestAccount(t, repo, accounts.CreateParams{
+		AccountNumber: "01000108",
+		UserID:        owner.ID,
+		Name:          "Personal Bank Account",
+		AccountType:   "personal",
+	})
+	transaction := createTestTransaction(t, repo, accounts.CreateTransactionParams{
+		ID:            "tan-fetch1",
+		AccountNumber: account.AccountNumber,
+		UserID:        owner.ID,
+		Amount:        40,
+		Currency:      "GBP",
+		Type:          "deposit",
+		Reference:     "Gift",
+	})
+
+	handler := NewAccountHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions/"+transaction.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
+	}
+	assertTransactionResponseWithID(t, rr.Body.Bytes(), transaction.ID, "deposit", 40, "Gift", owner.ID)
+}
+
+func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
+	owner, _, _ := testAuthenticatedUser(t, "usr-fetchtransactionowner1")
+	_, tokenService, token := testAuthenticatedUser(t, "usr-fetchtransactionintruder1")
+	repo := memory.NewRepository()
+	account := createTestAccount(t, repo, accounts.CreateParams{
+		AccountNumber: "01000109",
+		UserID:        owner.ID,
+		Name:          "Owner Account",
+		AccountType:   "personal",
+	})
+	transaction := createTestTransaction(t, repo, accounts.CreateTransactionParams{
+		ID:            "tan-forbidden1",
+		AccountNumber: account.AccountNumber,
+		UserID:        owner.ID,
+		Amount:        50,
+		Currency:      "GBP",
+		Type:          "deposit",
+	})
+
+	handler := NewAccountHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions/"+transaction.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusForbidden, rr.Body.String())
+	}
+	assertErrorMessage(t, rr.Body.Bytes())
+}
+
+func TestFetchTransaction_AuthenticatedUserRequestsNonExistentAccount_ReturnsNotFound(t *testing.T) {
+	_, tokenService, token := testAuthenticatedUser(t, "usr-fetchmissingaccount1")
+	handler := NewAccountHandler(memory.NewRepository(), tokenService)
+	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/01999996/transactions/tan-missingaccount1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusNotFound, rr.Body.String())
+	}
+	assertErrorMessage(t, rr.Body.Bytes())
+}
+
+func TestFetchTransaction_AuthenticatedOwnerRequestsNonExistentTransaction_ReturnsNotFound(t *testing.T) {
+	owner, tokenService, token := testAuthenticatedUser(t, "usr-fetchmissingtransaction1")
+	repo := memory.NewRepository()
+	account := createTestAccount(t, repo, accounts.CreateParams{
+		AccountNumber: "01000110",
+		UserID:        owner.ID,
+		Name:          "Personal Bank Account",
+		AccountType:   "personal",
+	})
+
+	handler := NewAccountHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions/tan-doesnotexist1", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusNotFound, rr.Body.String())
+	}
+	assertErrorMessage(t, rr.Body.Bytes())
+}
+
+func TestFetchTransaction_AuthenticatedOwnerRequestsTransactionForWrongAccount_ReturnsNotFound(t *testing.T) {
+	owner, tokenService, token := testAuthenticatedUser(t, "usr-fetchwrongaccount1")
+	repo := memory.NewRepository()
+	requestedAccount := createTestAccount(t, repo, accounts.CreateParams{
+		AccountNumber: "01000111",
+		UserID:        owner.ID,
+		Name:          "Current Account",
+		AccountType:   "personal",
+	})
+	otherAccount := createTestAccount(t, repo, accounts.CreateParams{
+		AccountNumber: "01000112",
+		UserID:        owner.ID,
+		Name:          "Savings Account",
+		AccountType:   "personal",
+	})
+	transaction := createTestTransaction(t, repo, accounts.CreateTransactionParams{
+		ID:            "tan-wrongaccount1",
+		AccountNumber: otherAccount.AccountNumber,
+		UserID:        owner.ID,
+		Amount:        75,
+		Currency:      "GBP",
+		Type:          "deposit",
+	})
+
+	handler := NewAccountHandler(repo, tokenService)
+	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+requestedAccount.AccountNumber+"/transactions/"+transaction.ID, nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusNotFound, rr.Body.String())
+	}
+	assertErrorMessage(t, rr.Body.Bytes())
+}
+
 func testAuthenticatedUser(t *testing.T, id string) (*users.User, *auth.TokenService, string) {
 	t.Helper()
 	userRepo := usersmemory.NewRepository()
@@ -616,6 +755,26 @@ func assertTransactionResponse(t *testing.T, body []byte, wantType string, wantA
 	}
 	if resp.UserID != wantUserID {
 		t.Fatalf("userId = %q, want %q", resp.UserID, wantUserID)
+	}
+	if _, err := time.Parse(time.RFC3339Nano, resp.CreatedTimestamp); err != nil {
+		t.Fatalf("createdTimestamp format: %v (%q)", err, resp.CreatedTimestamp)
+	}
+}
+
+func assertTransactionResponseWithID(t *testing.T, body []byte, wantID string, wantType string, wantAmount float64, wantReference string, wantUserID string) {
+	t.Helper()
+	var resp transactionResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		t.Fatalf("unmarshal response: %v body=%s", err, string(body))
+	}
+	if resp.ID != wantID {
+		t.Fatalf("id = %q, want %q", resp.ID, wantID)
+	}
+	if resp.Type != wantType || resp.Amount != wantAmount || resp.Currency != "GBP" || resp.UserID != wantUserID {
+		t.Fatalf("unexpected transaction response: %+v", resp)
+	}
+	if resp.Reference == nil || *resp.Reference != wantReference {
+		t.Fatalf("reference = %+v, want %q", resp.Reference, wantReference)
 	}
 	if _, err := time.Parse(time.RFC3339Nano, resp.CreatedTimestamp); err != nil {
 		t.Fatalf("createdTimestamp format: %v (%q)", err, resp.CreatedTimestamp)

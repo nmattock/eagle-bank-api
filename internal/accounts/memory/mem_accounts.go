@@ -142,6 +142,18 @@ func (r *AccountStore) ListTransactionsByAccountNumber(ctx context.Context, acco
 	return result, nil
 }
 
+func (r *AccountStore) GetTransactionByID(ctx context.Context, id string) (*accounts.Transaction, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	transaction, ok := r.transactions[id]
+	if !ok {
+		return nil, accounts.ErrNotFound
+	}
+	return cloneTransaction(transaction), nil
+}
+
 func cloneAccount(account *accounts.BankAccount) *accounts.BankAccount {
 	out := *account
 	return &out
