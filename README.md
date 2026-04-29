@@ -4,17 +4,52 @@ REST API for Eagle Bank, implemented against [`openapi.yaml`](openapi.yaml) — 
 
 ## Prerequisites
 
-- [Go](https://go.dev/dl/)
+- [Go](https://go.dev/dl/) 1.25 or newer
 - [Docker](https://docs.docker.com/get-docker/) with Compose v2
 
 ## Setup
 
+### 1) Start the database
+
 ```bash
 docker compose up -d
-./scripts/test-summary.sh
 ```
 
-The first command starts a local Postgres instance. The second runs the full test suite and prints a per-file breakdown to confirm everything is working.
+This starts only Postgres (`db` service).
+
+### 2) Start the backend API
+
+```bash
+go run .
+```
+
+### 3) Manually test with curl
+
+Create a user (unauthenticated endpoint):
+
+```bash
+curl -i -X POST http://localhost:8080/v1/users \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name":"Alice Example",
+    "address":{"line1":"1 High St","town":"London","county":"Greater London","postcode":"SW1A 1AA"},
+    "phoneNumber":"+441234567890",
+    "email":"alice@example.com",
+    "password":"correct horse battery staple"
+  }'
+```
+
+Expected: `201 Created`.
+
+### Runtime configuration
+
+The server listens on `localhost:8080` by default. Configuration is via environment variables:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `HTTP_ADDR` | `:8080` | Listen address |
+| `DATABASE_URL` | `postgres://eagle:eagle@localhost:5432/eagle_bank?sslmode=disable` | Postgres DSN |
+| `JWT_SECRET` | `dev-secret-change-me` | HMAC key for JWT signing |
 
 ## Tests
 
@@ -37,23 +72,6 @@ export TEST_DATABASE_URL='postgres://eagle:eagle@localhost:5432/eagle_bank?sslmo
 ```
 
 If `TEST_DATABASE_URL` is unset, integration tests skip automatically.
-
-## Running the server
-
-Start Postgres, then the API:
-
-```bash
-docker compose up -d
-go run .
-```
-
-The server listens on `localhost:8080` by default. Configuration is via environment variables:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `HTTP_ADDR` | `:8080` | Listen address |
-| `DATABASE_URL` | `postgres://eagle:eagle@localhost:5432/eagle_bank?sslmode=disable` | Postgres DSN |
-| `JWT_SECRET` | `dev-secret-change-me` | HMAC key for JWT signing |
 
 ## Project layout
 
