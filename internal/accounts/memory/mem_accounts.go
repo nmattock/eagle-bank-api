@@ -10,7 +10,7 @@ import (
 )
 
 type AccountStore struct {
-	mu              sync.Mutex
+	mu              sync.RWMutex
 	byAccountNumber map[string]*accounts.BankAccount
 	transactions    map[string]*accounts.Transaction
 }
@@ -25,7 +25,6 @@ func NewRepository() *AccountStore {
 var _ accounts.Repository = (*AccountStore)(nil)
 
 func (r *AccountStore) Create(ctx context.Context, params accounts.CreateParams) (*accounts.BankAccount, error) {
-	_ = ctx
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -49,9 +48,8 @@ func (r *AccountStore) Create(ctx context.Context, params accounts.CreateParams)
 }
 
 func (r *AccountStore) ListByUserID(ctx context.Context, userID string) ([]*accounts.BankAccount, error) {
-	_ = ctx
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	result := make([]*accounts.BankAccount, 0)
 	for _, account := range r.byAccountNumber {
@@ -66,9 +64,8 @@ func (r *AccountStore) ListByUserID(ctx context.Context, userID string) ([]*acco
 }
 
 func (r *AccountStore) GetByAccountNumber(ctx context.Context, accountNumber string) (*accounts.BankAccount, error) {
-	_ = ctx
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	account, ok := r.byAccountNumber[accountNumber]
 	if !ok {
@@ -78,7 +75,6 @@ func (r *AccountStore) GetByAccountNumber(ctx context.Context, accountNumber str
 }
 
 func (r *AccountStore) CreateTransaction(ctx context.Context, params accounts.CreateTransactionParams) (*accounts.Transaction, error) {
-	_ = ctx
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -123,9 +119,8 @@ func (r *AccountStore) CreateTransaction(ctx context.Context, params accounts.Cr
 }
 
 func (r *AccountStore) ListTransactionsByAccountNumber(ctx context.Context, accountNumber string) ([]*accounts.Transaction, error) {
-	_ = ctx
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	if _, ok := r.byAccountNumber[accountNumber]; !ok {
 		return nil, accounts.ErrNotFound
@@ -143,9 +138,8 @@ func (r *AccountStore) ListTransactionsByAccountNumber(ctx context.Context, acco
 }
 
 func (r *AccountStore) GetTransactionByID(ctx context.Context, id string) (*accounts.Transaction, error) {
-	_ = ctx
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 
 	transaction, ok := r.transactions[id]
 	if !ok {

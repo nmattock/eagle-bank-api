@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"sort"
 
 	"eagle-bank-api/internal/accounts"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -61,9 +60,6 @@ ORDER BY account_number ASC
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].AccountNumber < result[j].AccountNumber
-	})
 	return result, nil
 }
 
