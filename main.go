@@ -31,12 +31,13 @@ func main() {
 	userRepo := userspostgres.NewRepository(db)
 	accountRepo := accountspostgres.NewRepository(db)
 	tokenService := auth.NewTokenService(getenv("JWT_SECRET", "dev-secret-change-me"), time.Hour)
+	requireAuth := httpapi.AuthMiddleware(tokenService)
 
 	mux := http.NewServeMux()
-	mux.Handle("/v1/accounts", httpapi.NewAccountHandler(accountRepo, tokenService))
-	mux.Handle("/v1/accounts/", httpapi.NewAccountHandler(accountRepo, tokenService))
-	mux.Handle("/v1/users", httpapi.NewUserHandler(userRepo, tokenService))
-	mux.Handle("/v1/users/", httpapi.NewUserHandler(userRepo, tokenService))
+	mux.Handle("/v1/accounts", requireAuth(httpapi.NewAccountHandler(accountRepo)))
+	mux.Handle("/v1/accounts/", requireAuth(httpapi.NewAccountHandler(accountRepo)))
+	mux.Handle("/v1/users", httpapi.NewUserHandler(userRepo))
+	mux.Handle("/v1/users/", requireAuth(httpapi.NewUserHandler(userRepo)))
 	mux.Handle("/v1/auth/token", httpapi.NewAuthHandler(userRepo, tokenService))
 
 	addr := getenv("HTTP_ADDR", ":8080")

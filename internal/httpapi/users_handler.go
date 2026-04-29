@@ -7,23 +7,17 @@ import (
 	"strings"
 	"time"
 
-	"eagle-bank-api/internal/auth"
 	"eagle-bank-api/internal/users"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UserHandler struct {
-	repo   users.Repository
-	tokens *auth.TokenService
+	repo users.Repository
 }
 
-func NewUserHandler(repo users.Repository, tokens ...*auth.TokenService) *UserHandler {
-	var tokenService *auth.TokenService
-	if len(tokens) > 0 {
-		tokenService = tokens[0]
-	}
-	return &UserHandler{repo: repo, tokens: tokenService}
+func NewUserHandler(repo users.Repository) *UserHandler {
+	return &UserHandler{repo: repo}
 }
 
 type createUserAddressRequest struct {
@@ -140,10 +134,7 @@ func (h *UserHandler) handleUserByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	claims, ok := h.authenticate(w, r)
-	if !ok {
-		return
-	}
+	claims := ClaimsFromContext(r.Context())
 
 	u, err := h.repo.GetByID(r.Context(), userID)
 	if err != nil {
@@ -159,33 +150,6 @@ func (h *UserHandler) handleUserByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, toUserResponse(u))
-}
-
-func (h *UserHandler) authenticate(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
-	if h.tokens == nil {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
-		return nil, false
-	}
-	token, ok := bearerToken(r)
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
-		return nil, false
-	}
-	claims, err := h.tokens.Verify(token)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
-		return nil, false
-	}
-	return claims, true
-}
-
-func bearerToken(r *http.Request) (string, bool) {
-	auth := r.Header.Get("Authorization")
-	if !strings.HasPrefix(auth, "Bearer ") {
-		return "", false
-	}
-	token := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
-	return token, token != ""
 }
 
 func validateCreateUserRequest(req createUserRequest) error {

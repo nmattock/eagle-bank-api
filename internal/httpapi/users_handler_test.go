@@ -246,7 +246,7 @@ func TestFetchUser_AuthenticatedUserRequestsOwnDetails_ReturnsUser(t *testing.T)
 		t.Fatalf("issue token: %v", err)
 	}
 
-	handler := NewUserHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewUserHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+created.ID, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -327,7 +327,7 @@ func TestFetchUser_AuthenticatedUserRequestsAnotherUser_ReturnsForbidden(t *test
 		t.Fatalf("issue token: %v", err)
 	}
 
-	handler := NewUserHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewUserHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/"+otherUser.ID, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -368,7 +368,7 @@ func TestFetchUser_AuthenticatedUserRequestsNonExistentUser_ReturnsNotFound(t *t
 		t.Fatalf("issue token: %v", err)
 	}
 
-	handler := NewUserHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewUserHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/users/usr-doesnotexist1", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()

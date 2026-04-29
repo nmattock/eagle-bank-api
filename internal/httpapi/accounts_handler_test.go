@@ -20,7 +20,7 @@ import (
 
 func TestCreateBankAccount_AuthenticatedValidRequest_ReturnsCreatedAccount(t *testing.T) {
 	_, tokenService, token := testAuthenticatedUser(t, "usr-accountowner1")
-	handler := NewAccountHandler(memory.NewRepository(), tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(memory.NewRepository()))
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts", strings.NewReader(`{
 		"name":"Personal Bank Account",
 		"accountType":"personal"
@@ -97,7 +97,7 @@ func TestListBankAccounts_AuthenticatedUser_ReturnsTheirAccounts(t *testing.T) {
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -135,7 +135,7 @@ func TestFetchBankAccount_AuthenticatedOwner_ReturnsAccount(t *testing.T) {
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -159,7 +159,7 @@ func TestFetchBankAccount_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -174,7 +174,7 @@ func TestFetchBankAccount_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 
 func TestFetchBankAccount_AuthenticatedUserRequestsNonExistentAccount_ReturnsNotFound(t *testing.T) {
 	_, tokenService, token := testAuthenticatedUser(t, "usr-missingaccount1")
-	handler := NewAccountHandler(memory.NewRepository(), tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(memory.NewRepository()))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/01999999", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -197,7 +197,7 @@ func TestCreateTransaction_AuthenticatedOwnerDepositsMoney_ReturnsTransactionAnd
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.AccountNumber+"/transactions", strings.NewReader(`{
 		"amount":25.50,
 		"currency":"GBP",
@@ -246,7 +246,7 @@ func TestCreateTransaction_AuthenticatedOwnerWithdrawsMoney_ReturnsTransactionAn
 		t.Fatalf("seed deposit: %v", err)
 	}
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.AccountNumber+"/transactions", strings.NewReader(`{
 		"amount":30.25,
 		"currency":"GBP",
@@ -283,7 +283,7 @@ func TestCreateTransaction_AuthenticatedOwnerWithdrawsWithInsufficientFunds_Retu
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.AccountNumber+"/transactions", strings.NewReader(`{
 		"amount":30.25,
 		"currency":"GBP",
@@ -321,7 +321,7 @@ func TestCreateTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) 
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/"+account.AccountNumber+"/transactions", strings.NewReader(`{
 		"amount":10.00,
 		"currency":"GBP",
@@ -349,7 +349,7 @@ func TestCreateTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) 
 
 func TestCreateTransaction_AuthenticatedUserRequestsNonExistentAccount_ReturnsNotFound(t *testing.T) {
 	_, tokenService, token := testAuthenticatedUser(t, "usr-missingtransactionaccount1")
-	handler := NewAccountHandler(memory.NewRepository(), tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(memory.NewRepository()))
 	req := httptest.NewRequest(http.MethodPost, "/v1/accounts/01999998/transactions", strings.NewReader(`{
 		"amount":10.00,
 		"currency":"GBP",
@@ -376,7 +376,7 @@ func TestCreateTransaction_AuthenticatedUserMissingRequiredData_ReturnsBadReques
 		Name:          "Personal Bank Account",
 		AccountType:   accounts.AccountTypePersonal,
 	})
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 
 	tests := []struct {
 		name string
@@ -441,7 +441,7 @@ func TestListTransactions_AuthenticatedOwner_ReturnsTransactions(t *testing.T) {
 		Reference:     "Lunch",
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -483,7 +483,7 @@ func TestListTransactions_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		Type:          accounts.TransactionTypeDeposit,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -498,7 +498,7 @@ func TestListTransactions_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 
 func TestListTransactions_AuthenticatedUserRequestsNonExistentAccount_ReturnsNotFound(t *testing.T) {
 	_, tokenService, token := testAuthenticatedUser(t, "usr-listmissingtransactions1")
-	handler := NewAccountHandler(memory.NewRepository(), tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(memory.NewRepository()))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/01999997/transactions", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -530,7 +530,7 @@ func TestFetchTransaction_AuthenticatedOwner_ReturnsTransaction(t *testing.T) {
 		Reference:     "Gift",
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions/"+transaction.ID, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -562,7 +562,7 @@ func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		Type:          accounts.TransactionTypeDeposit,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions/"+transaction.ID, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -577,7 +577,7 @@ func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 
 func TestFetchTransaction_AuthenticatedUserRequestsNonExistentAccount_ReturnsNotFound(t *testing.T) {
 	_, tokenService, token := testAuthenticatedUser(t, "usr-fetchmissingaccount1")
-	handler := NewAccountHandler(memory.NewRepository(), tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(memory.NewRepository()))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/01999996/transactions/tan-missingaccount1", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -600,7 +600,7 @@ func TestFetchTransaction_AuthenticatedOwnerRequestsNonExistentTransaction_Retur
 		AccountType:   accounts.AccountTypePersonal,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+account.AccountNumber+"/transactions/tan-doesnotexist1", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
@@ -637,7 +637,7 @@ func TestFetchTransaction_AuthenticatedOwnerRequestsTransactionForWrongAccount_R
 		Type:          accounts.TransactionTypeDeposit,
 	})
 
-	handler := NewAccountHandler(repo, tokenService)
+	handler := AuthMiddleware(tokenService)(NewAccountHandler(repo))
 	req := httptest.NewRequest(http.MethodGet, "/v1/accounts/"+requestedAccount.AccountNumber+"/transactions/"+transaction.ID, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()

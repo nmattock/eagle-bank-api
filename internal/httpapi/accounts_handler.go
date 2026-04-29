@@ -12,16 +12,14 @@ import (
 	"time"
 
 	"eagle-bank-api/internal/accounts"
-	"eagle-bank-api/internal/auth"
 )
 
 type AccountHandler struct {
-	repo   accounts.Repository
-	tokens *auth.TokenService
+	repo accounts.Repository
 }
 
-func NewAccountHandler(repo accounts.Repository, tokens *auth.TokenService) *AccountHandler {
-	return &AccountHandler{repo: repo, tokens: tokens}
+func NewAccountHandler(repo accounts.Repository) *AccountHandler {
+	return &AccountHandler{repo: repo}
 }
 
 type createBankAccountRequest struct {
@@ -114,10 +112,7 @@ func (h *AccountHandler) handleAccountTransactions(w http.ResponseWriter, r *htt
 }
 
 func (h *AccountHandler) handleCreateAccount(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.authenticate(w, r)
-	if !ok {
-		return
-	}
+	claims := ClaimsFromContext(r.Context())
 
 	var req createBankAccountRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -153,10 +148,7 @@ func (h *AccountHandler) handleCreateAccount(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *AccountHandler) handleListAccounts(w http.ResponseWriter, r *http.Request) {
-	claims, ok := h.authenticate(w, r)
-	if !ok {
-		return
-	}
+	claims := ClaimsFromContext(r.Context())
 	accountsForUser, err := h.repo.ListByUserID(r.Context(), claims.Subject)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
@@ -179,10 +171,7 @@ func (h *AccountHandler) handleAccountByNumber(w http.ResponseWriter, r *http.Re
 		http.NotFound(w, r)
 		return
 	}
-	claims, ok := h.authenticate(w, r)
-	if !ok {
-		return
-	}
+	claims := ClaimsFromContext(r.Context())
 
 	account, err := h.repo.GetByAccountNumber(r.Context(), accountNumber)
 	if err != nil {
@@ -201,10 +190,7 @@ func (h *AccountHandler) handleAccountByNumber(w http.ResponseWriter, r *http.Re
 }
 
 func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.Request, accountNumber string) {
-	claims, ok := h.authenticate(w, r)
-	if !ok {
-		return
-	}
+	claims := ClaimsFromContext(r.Context())
 
 	account, err := h.repo.GetByAccountNumber(r.Context(), accountNumber)
 	if err != nil {
@@ -260,10 +246,7 @@ func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.
 }
 
 func (h *AccountHandler) handleListTransactions(w http.ResponseWriter, r *http.Request, accountNumber string) {
-	claims, ok := h.authenticate(w, r)
-	if !ok {
-		return
-	}
+	claims := ClaimsFromContext(r.Context())
 
 	account, err := h.repo.GetByAccountNumber(r.Context(), accountNumber)
 	if err != nil {
@@ -296,10 +279,7 @@ func (h *AccountHandler) handleListTransactions(w http.ResponseWriter, r *http.R
 }
 
 func (h *AccountHandler) handleFetchTransaction(w http.ResponseWriter, r *http.Request, accountNumber string, transactionID string) {
-	claims, ok := h.authenticate(w, r)
-	if !ok {
-		return
-	}
+	claims := ClaimsFromContext(r.Context())
 
 	account, err := h.repo.GetByAccountNumber(r.Context(), accountNumber)
 	if err != nil {
@@ -329,24 +309,6 @@ func (h *AccountHandler) handleFetchTransaction(w http.ResponseWriter, r *http.R
 		return
 	}
 	writeJSON(w, http.StatusOK, toTransactionResponse(transaction))
-}
-
-func (h *AccountHandler) authenticate(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {
-	if h.tokens == nil {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
-		return nil, false
-	}
-	token, ok := bearerToken(r)
-	if !ok {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
-		return nil, false
-	}
-	claims, err := h.tokens.Verify(token)
-	if err != nil {
-		writeJSON(w, http.StatusUnauthorized, errorResponse{Message: "unauthorized"})
-		return nil, false
-	}
-	return claims, true
 }
 
 func parseAccountTransactionPath(path string) (string, string, bool) {
