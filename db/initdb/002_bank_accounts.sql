@@ -9,8 +9,8 @@ CREATE TABLE bank_accounts (
     name TEXT NOT NULL,
     account_type TEXT NOT NULL
         CONSTRAINT bank_accounts_type_allowed CHECK (account_type = 'personal'),
-    balance NUMERIC(12, 2) NOT NULL DEFAULT 0.00
-        CONSTRAINT bank_accounts_balance_range CHECK (balance >= 0.00 AND balance <= 10000.00),
+    balance BIGINT NOT NULL DEFAULT 0
+        CONSTRAINT bank_accounts_balance_range CHECK (balance >= 0 AND balance <= 1000000),
     currency TEXT NOT NULL DEFAULT 'GBP'
         CONSTRAINT bank_accounts_currency_allowed CHECK (currency = 'GBP'),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

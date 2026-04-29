@@ -90,7 +90,7 @@ func (r *AccountDb) CreateTransaction(ctx context.Context, params accounts.Creat
 	}
 	defer tx.Rollback()
 
-	var currentBalance float64
+	var currentBalance int64
 	err = tx.QueryRowContext(ctx, `
 SELECT balance
 FROM bank_accounts

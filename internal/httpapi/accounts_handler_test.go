@@ -219,8 +219,8 @@ func TestCreateTransaction_AuthenticatedOwnerDepositsMoney_ReturnsTransactionAnd
 	if err != nil {
 		t.Fatalf("get updated account: %v", err)
 	}
-	if updatedAccount.Balance != 25.50 {
-		t.Fatalf("balance = %v, want 25.50", updatedAccount.Balance)
+	if updatedAccount.Balance != 2550 {
+		t.Fatalf("balance = %d, want 2550", updatedAccount.Balance)
 	}
 }
 
@@ -237,7 +237,7 @@ func TestCreateTransaction_AuthenticatedOwnerWithdrawsMoney_ReturnsTransactionAn
 		ID:            "tan-seedfunds1",
 		AccountNumber: account.AccountNumber,
 		UserID:        owner.ID,
-		Amount:        100,
+		Amount:        10000,
 		Currency:      "GBP",
 		Type:          "deposit",
 		Reference:     "Seed funds",
@@ -268,8 +268,8 @@ func TestCreateTransaction_AuthenticatedOwnerWithdrawsMoney_ReturnsTransactionAn
 	if err != nil {
 		t.Fatalf("get updated account: %v", err)
 	}
-	if updatedAccount.Balance != 69.75 {
-		t.Fatalf("balance = %v, want 69.75", updatedAccount.Balance)
+	if updatedAccount.Balance != 6975 {
+		t.Fatalf("balance = %d, want 6975", updatedAccount.Balance)
 	}
 }
 
@@ -426,7 +426,7 @@ func TestListTransactions_AuthenticatedOwner_ReturnsTransactions(t *testing.T) {
 		ID:            "tan-listdeposit1",
 		AccountNumber: account.AccountNumber,
 		UserID:        owner.ID,
-		Amount:        100,
+		Amount:        10000,
 		Currency:      "GBP",
 		Type:          "deposit",
 		Reference:     "Salary",
@@ -435,7 +435,7 @@ func TestListTransactions_AuthenticatedOwner_ReturnsTransactions(t *testing.T) {
 		ID:            "tan-listwithdraw1",
 		AccountNumber: account.AccountNumber,
 		UserID:        owner.ID,
-		Amount:        25,
+		Amount:        2500,
 		Currency:      "GBP",
 		Type:          "withdrawal",
 		Reference:     "Lunch",
@@ -460,8 +460,8 @@ func TestListTransactions_AuthenticatedOwner_ReturnsTransactions(t *testing.T) {
 	if len(resp.Transactions) != 2 {
 		t.Fatalf("transactions len = %d, want 2; body=%s", len(resp.Transactions), rr.Body.String())
 	}
-	assertTransactionInList(t, resp.Transactions, deposit.ID, "deposit", 100, "Salary", owner.ID)
-	assertTransactionInList(t, resp.Transactions, withdrawal.ID, "withdrawal", 25, "Lunch", owner.ID)
+	assertTransactionInList(t, resp.Transactions, deposit.ID, "deposit", 100.00, "Salary", owner.ID)
+	assertTransactionInList(t, resp.Transactions, withdrawal.ID, "withdrawal", 25.00, "Lunch", owner.ID)
 }
 
 func TestListTransactions_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
@@ -478,7 +478,7 @@ func TestListTransactions_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		ID:            "tan-private1",
 		AccountNumber: account.AccountNumber,
 		UserID:        owner.ID,
-		Amount:        50,
+		Amount:        5000,
 		Currency:      "GBP",
 		Type:          "deposit",
 	})
@@ -524,7 +524,7 @@ func TestFetchTransaction_AuthenticatedOwner_ReturnsTransaction(t *testing.T) {
 		ID:            "tan-fetch1",
 		AccountNumber: account.AccountNumber,
 		UserID:        owner.ID,
-		Amount:        40,
+		Amount:        4000,
 		Currency:      "GBP",
 		Type:          "deposit",
 		Reference:     "Gift",
@@ -540,7 +540,7 @@ func TestFetchTransaction_AuthenticatedOwner_ReturnsTransaction(t *testing.T) {
 	if rr.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusOK, rr.Body.String())
 	}
-	assertTransactionResponseWithID(t, rr.Body.Bytes(), transaction.ID, "deposit", 40, "Gift", owner.ID)
+	assertTransactionResponseWithID(t, rr.Body.Bytes(), transaction.ID, "deposit", 40.00, "Gift", owner.ID)
 }
 
 func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
@@ -557,7 +557,7 @@ func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		ID:            "tan-forbidden1",
 		AccountNumber: account.AccountNumber,
 		UserID:        owner.ID,
-		Amount:        50,
+		Amount:        5000,
 		Currency:      "GBP",
 		Type:          "deposit",
 	})
@@ -632,7 +632,7 @@ func TestFetchTransaction_AuthenticatedOwnerRequestsTransactionForWrongAccount_R
 		ID:            "tan-wrongaccount1",
 		AccountNumber: otherAccount.AccountNumber,
 		UserID:        owner.ID,
-		Amount:        75,
+		Amount:        7500,
 		Currency:      "GBP",
 		Type:          "deposit",
 	})
@@ -648,6 +648,86 @@ func TestFetchTransaction_AuthenticatedOwnerRequestsTransactionForWrongAccount_R
 		t.Fatalf("status = %d, want %d; body=%s", rr.Code, http.StatusNotFound, rr.Body.String())
 	}
 	assertErrorMessage(t, rr.Body.Bytes())
+}
+
+func TestPoundsToPence(t *testing.T) {
+	tests := []struct {
+		name   string
+		pounds float64
+		want   int64
+	}{
+		{name: "zero", pounds: 0, want: 0},
+		{name: "whole pounds", pounds: 1, want: 100},
+		{name: "pence only", pounds: 0.99, want: 99},
+		{name: "pounds and pence", pounds: 25.50, want: 2550},
+		{name: "single penny", pounds: 0.01, want: 1},
+		{name: "rounds half-penny up", pounds: 0.005, want: 1},
+		{name: "truncates sub-half-penny", pounds: 0.004, want: 0},
+		{name: "large value", pounds: 9999.99, want: 999999},
+		{name: "floating point classic 0.1+0.2", pounds: 0.1 + 0.2, want: 30},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := poundsToPence(tc.pounds)
+			if got != tc.want {
+				t.Fatalf("poundsToPence(%v) = %d, want %d", tc.pounds, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPenceToPounds(t *testing.T) {
+	tests := []struct {
+		name  string
+		pence int64
+		want  float64
+	}{
+		{name: "zero", pence: 0, want: 0},
+		{name: "whole pound", pence: 100, want: 1},
+		{name: "pence only", pence: 99, want: 0.99},
+		{name: "pounds and pence", pence: 2550, want: 25.50},
+		{name: "single penny", pence: 1, want: 0.01},
+		{name: "large value", pence: 999999, want: 9999.99},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := penceToPounds(tc.pence)
+			if got != tc.want {
+				t.Fatalf("penceToPounds(%d) = %v, want %v", tc.pence, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPenceConversion_RoundTrip(t *testing.T) {
+	t.Run("pence to pounds to pence", func(t *testing.T) {
+		values := []int64{0, 1, 10, 50, 99, 100, 101, 150, 2550, 9999, 100000, 999999, 1000000}
+		for _, pence := range values {
+			got := poundsToPence(penceToPounds(pence))
+			if got != pence {
+				t.Fatalf("round-trip failed for %d pence: got %d", pence, got)
+			}
+		}
+	})
+
+	t.Run("pounds to pence to pounds", func(t *testing.T) {
+		values := []float64{0, 0.01, 0.10, 0.50, 0.99, 1.00, 1.01, 1.50, 25.50, 99.99, 1000.00, 9999.99, 10000.00}
+		for _, pounds := range values {
+			got := penceToPounds(poundsToPence(pounds))
+			if got != pounds {
+				t.Fatalf("round-trip failed for %.2f pounds: got %v", pounds, got)
+			}
+		}
+	})
+
+	t.Run("all whole-penny amounts under one pound", func(t *testing.T) {
+		for pence := int64(0); pence <= 100; pence++ {
+			got := poundsToPence(penceToPounds(pence))
+			if got != pence {
+				t.Fatalf("round-trip failed for %d pence: got %d", pence, got)
+			}
+		}
+	})
 }
 
 func testAuthenticatedUser(t *testing.T, id string) (*users.User, *auth.TokenService, string) {

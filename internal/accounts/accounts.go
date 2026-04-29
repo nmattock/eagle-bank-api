@@ -16,7 +16,7 @@ type BankAccount struct {
 	SortCode      string
 	Name          string
 	AccountType   string
-	Balance       float64
+	Balance       int64 // minor units (pence)
 	Currency      string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
@@ -33,7 +33,7 @@ type Transaction struct {
 	ID            string
 	AccountNumber string
 	UserID        string
-	Amount        float64
+	Amount        int64 // minor units (pence)
 	Currency      string
 	Type          string
 	Reference     *string
@@ -44,7 +44,7 @@ type CreateTransactionParams struct {
 	ID            string
 	AccountNumber string
 	UserID        string
-	Amount        float64
+	Amount        int64 // minor units (pence)
 	Currency      string
 	Type          string
 	Reference     string

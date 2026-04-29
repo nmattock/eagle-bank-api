@@ -5,8 +5,8 @@ CREATE TABLE transactions (
         CONSTRAINT transactions_id_format CHECK (id ~ '^tan-[A-Za-z0-9]+$'),
     account_number TEXT NOT NULL REFERENCES bank_accounts (account_number) ON DELETE CASCADE,
     user_id TEXT NOT NULL REFERENCES users (id) ON DELETE RESTRICT,
-    amount NUMERIC(12, 2) NOT NULL
-        CONSTRAINT transactions_amount_range CHECK (amount >= 0.00 AND amount <= 10000.00),
+    amount BIGINT NOT NULL
+        CONSTRAINT transactions_amount_range CHECK (amount >= 0 AND amount <= 1000000),
     currency TEXT NOT NULL
         CONSTRAINT transactions_currency_allowed CHECK (currency = 'GBP'),
     type TEXT NOT NULL

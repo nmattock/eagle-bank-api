@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"net/http"
 	"strings"
@@ -238,7 +239,7 @@ func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.
 		ID:            transactionID,
 		AccountNumber: accountNumber,
 		UserID:        claims.Subject,
-		Amount:        req.Amount,
+		Amount:        poundsToPence(req.Amount),
 		Currency:      req.Currency,
 		Type:          req.Type,
 		Reference:     req.Reference,
@@ -417,7 +418,7 @@ func toBankAccountResponse(account *accounts.BankAccount) bankAccountResponse {
 		SortCode:         account.SortCode,
 		Name:             account.Name,
 		AccountType:      account.AccountType,
-		Balance:          account.Balance,
+		Balance:          penceToPounds(account.Balance),
 		Currency:         account.Currency,
 		CreatedTimestamp: account.CreatedAt.UTC().Format(time.RFC3339Nano),
 		UpdatedTimestamp: account.UpdatedAt.UTC().Format(time.RFC3339Nano),
@@ -427,11 +428,19 @@ func toBankAccountResponse(account *accounts.BankAccount) bankAccountResponse {
 func toTransactionResponse(transaction *accounts.Transaction) transactionResponse {
 	return transactionResponse{
 		ID:               transaction.ID,
-		Amount:           transaction.Amount,
+		Amount:           penceToPounds(transaction.Amount),
 		Currency:         transaction.Currency,
 		Type:             transaction.Type,
 		Reference:        transaction.Reference,
 		UserID:           transaction.UserID,
 		CreatedTimestamp: transaction.CreatedAt.UTC().Format(time.RFC3339Nano),
 	}
+}
+
+func penceToPounds(pence int64) float64 {
+	return float64(pence) / 100
+}
+
+func poundsToPence(pounds float64) int64 {
+	return int64(math.Round(pounds * 100))
 }
