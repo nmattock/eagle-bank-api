@@ -103,7 +103,7 @@ FOR UPDATE
 		}
 		return nil, err
 	}
-	if params.Type == "withdrawal" && currentBalance < params.Amount {
+	if params.Type == accounts.TransactionTypeWithdrawal && currentBalance < params.Amount {
 		return nil, accounts.ErrInsufficientFunds
 	}
 

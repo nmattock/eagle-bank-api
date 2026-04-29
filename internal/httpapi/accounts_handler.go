@@ -138,7 +138,7 @@ func (h *AccountHandler) handleCreateAccount(w http.ResponseWriter, r *http.Requ
 		AccountNumber: accountNumber,
 		UserID:        claims.Subject,
 		Name:          req.Name,
-		AccountType:   req.AccountType,
+		AccountType:   accounts.AccountType(req.AccountType),
 	})
 	if err != nil {
 		if errors.Is(err, accounts.ErrAlreadyExists) {
@@ -241,7 +241,7 @@ func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.
 		UserID:        claims.Subject,
 		Amount:        poundsToPence(req.Amount),
 		Currency:      req.Currency,
-		Type:          req.Type,
+		Type:          accounts.TransactionType(req.Type),
 		Reference:     req.Reference,
 	})
 	if err != nil {
@@ -377,7 +377,7 @@ func validateCreateBankAccountRequest(req createBankAccountRequest) error {
 	if strings.TrimSpace(req.AccountType) == "" {
 		return errors.New("accountType is required")
 	}
-	if req.AccountType != "personal" {
+	if accounts.AccountType(req.AccountType) != accounts.AccountTypePersonal {
 		return errors.New("accountType must be personal")
 	}
 	return nil
@@ -390,7 +390,8 @@ func validateCreateTransactionRequest(req createTransactionRequest) error {
 	if req.Currency != "GBP" {
 		return errors.New("currency must be GBP")
 	}
-	if req.Type != "deposit" && req.Type != "withdrawal" {
+	txType := accounts.TransactionType(req.Type)
+	if txType != accounts.TransactionTypeDeposit && txType != accounts.TransactionTypeWithdrawal {
 		return errors.New("type must be deposit or withdrawal")
 	}
 	return nil
@@ -417,7 +418,7 @@ func toBankAccountResponse(account *accounts.BankAccount) bankAccountResponse {
 		AccountNumber:    account.AccountNumber,
 		SortCode:         account.SortCode,
 		Name:             account.Name,
-		AccountType:      account.AccountType,
+		AccountType:      string(account.AccountType),
 		Balance:          penceToPounds(account.Balance),
 		Currency:         account.Currency,
 		CreatedTimestamp: account.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -430,7 +431,7 @@ func toTransactionResponse(transaction *accounts.Transaction) transactionRespons
 		ID:               transaction.ID,
 		Amount:           penceToPounds(transaction.Amount),
 		Currency:         transaction.Currency,
-		Type:             transaction.Type,
+		Type:             string(transaction.Type),
 		Reference:        transaction.Reference,
 		UserID:           transaction.UserID,
 		CreatedTimestamp: transaction.CreatedAt.UTC().Format(time.RFC3339Nano),

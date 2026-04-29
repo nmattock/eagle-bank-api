@@ -91,15 +91,15 @@ func (r *AccountStore) CreateTransaction(ctx context.Context, params accounts.Cr
 	}
 
 	switch params.Type {
-	case "deposit":
+	case accounts.TransactionTypeDeposit:
 		account.Balance += params.Amount
-	case "withdrawal":
+	case accounts.TransactionTypeWithdrawal:
 		if account.Balance < params.Amount {
 			return nil, accounts.ErrInsufficientFunds
 		}
 		account.Balance -= params.Amount
 	default:
-		return nil, accounts.ErrNotFound
+		return nil, accounts.ErrInvalidTransactionType
 	}
 	account.UpdatedAt = time.Now().UTC()
 

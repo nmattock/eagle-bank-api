@@ -82,19 +82,19 @@ func TestListBankAccounts_AuthenticatedUser_ReturnsTheirAccounts(t *testing.T) {
 		AccountNumber: "01000001",
 		UserID:        owner.ID,
 		Name:          "Everyday Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	ownAccount2 := createTestAccount(t, repo, accounts.CreateParams{
 		AccountNumber: "01000002",
 		UserID:        owner.ID,
 		Name:          "Savings Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	createTestAccount(t, repo, accounts.CreateParams{
 		AccountNumber: "01000003",
 		UserID:        otherUser.ID,
 		Name:          "Other User Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -132,7 +132,7 @@ func TestFetchBankAccount_AuthenticatedOwner_ReturnsAccount(t *testing.T) {
 		AccountNumber: "01000011",
 		UserID:        owner.ID,
 		Name:          "Personal Bank Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -156,7 +156,7 @@ func TestFetchBankAccount_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		AccountNumber: "01000021",
 		UserID:        owner.ID,
 		Name:          "Owner Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -194,7 +194,7 @@ func TestCreateTransaction_AuthenticatedOwnerDepositsMoney_ReturnsTransactionAnd
 		AccountNumber: "01000101",
 		UserID:        owner.ID,
 		Name:          "Personal Bank Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -231,7 +231,7 @@ func TestCreateTransaction_AuthenticatedOwnerWithdrawsMoney_ReturnsTransactionAn
 		AccountNumber: "01000102",
 		UserID:        owner.ID,
 		Name:          "Personal Bank Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	_, err := repo.CreateTransaction(context.Background(), accounts.CreateTransactionParams{
 		ID:            "tan-seedfunds1",
@@ -239,7 +239,7 @@ func TestCreateTransaction_AuthenticatedOwnerWithdrawsMoney_ReturnsTransactionAn
 		UserID:        owner.ID,
 		Amount:        10000,
 		Currency:      "GBP",
-		Type:          "deposit",
+		Type:          accounts.TransactionTypeDeposit,
 		Reference:     "Seed funds",
 	})
 	if err != nil {
@@ -280,7 +280,7 @@ func TestCreateTransaction_AuthenticatedOwnerWithdrawsWithInsufficientFunds_Retu
 		AccountNumber: "01000103",
 		UserID:        owner.ID,
 		Name:          "Personal Bank Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -318,7 +318,7 @@ func TestCreateTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) 
 		AccountNumber: "01000104",
 		UserID:        owner.ID,
 		Name:          "Owner Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -374,7 +374,7 @@ func TestCreateTransaction_AuthenticatedUserMissingRequiredData_ReturnsBadReques
 		AccountNumber: "01000105",
 		UserID:        owner.ID,
 		Name:          "Personal Bank Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	handler := NewAccountHandler(repo, tokenService)
 
@@ -420,7 +420,7 @@ func TestListTransactions_AuthenticatedOwner_ReturnsTransactions(t *testing.T) {
 		AccountNumber: "01000106",
 		UserID:        owner.ID,
 		Name:          "Personal Bank Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	deposit := createTestTransaction(t, repo, accounts.CreateTransactionParams{
 		ID:            "tan-listdeposit1",
@@ -428,7 +428,7 @@ func TestListTransactions_AuthenticatedOwner_ReturnsTransactions(t *testing.T) {
 		UserID:        owner.ID,
 		Amount:        10000,
 		Currency:      "GBP",
-		Type:          "deposit",
+		Type:          accounts.TransactionTypeDeposit,
 		Reference:     "Salary",
 	})
 	withdrawal := createTestTransaction(t, repo, accounts.CreateTransactionParams{
@@ -437,7 +437,7 @@ func TestListTransactions_AuthenticatedOwner_ReturnsTransactions(t *testing.T) {
 		UserID:        owner.ID,
 		Amount:        2500,
 		Currency:      "GBP",
-		Type:          "withdrawal",
+		Type:          accounts.TransactionTypeWithdrawal,
 		Reference:     "Lunch",
 	})
 
@@ -472,7 +472,7 @@ func TestListTransactions_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		AccountNumber: "01000107",
 		UserID:        owner.ID,
 		Name:          "Owner Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	createTestTransaction(t, repo, accounts.CreateTransactionParams{
 		ID:            "tan-private1",
@@ -480,7 +480,7 @@ func TestListTransactions_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		UserID:        owner.ID,
 		Amount:        5000,
 		Currency:      "GBP",
-		Type:          "deposit",
+		Type:          accounts.TransactionTypeDeposit,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -518,7 +518,7 @@ func TestFetchTransaction_AuthenticatedOwner_ReturnsTransaction(t *testing.T) {
 		AccountNumber: "01000108",
 		UserID:        owner.ID,
 		Name:          "Personal Bank Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	transaction := createTestTransaction(t, repo, accounts.CreateTransactionParams{
 		ID:            "tan-fetch1",
@@ -526,7 +526,7 @@ func TestFetchTransaction_AuthenticatedOwner_ReturnsTransaction(t *testing.T) {
 		UserID:        owner.ID,
 		Amount:        4000,
 		Currency:      "GBP",
-		Type:          "deposit",
+		Type:          accounts.TransactionTypeDeposit,
 		Reference:     "Gift",
 	})
 
@@ -551,7 +551,7 @@ func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		AccountNumber: "01000109",
 		UserID:        owner.ID,
 		Name:          "Owner Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	transaction := createTestTransaction(t, repo, accounts.CreateTransactionParams{
 		ID:            "tan-forbidden1",
@@ -559,7 +559,7 @@ func TestFetchTransaction_AuthenticatedNonOwner_ReturnsForbidden(t *testing.T) {
 		UserID:        owner.ID,
 		Amount:        5000,
 		Currency:      "GBP",
-		Type:          "deposit",
+		Type:          accounts.TransactionTypeDeposit,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -597,7 +597,7 @@ func TestFetchTransaction_AuthenticatedOwnerRequestsNonExistentTransaction_Retur
 		AccountNumber: "01000110",
 		UserID:        owner.ID,
 		Name:          "Personal Bank Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)
@@ -620,13 +620,13 @@ func TestFetchTransaction_AuthenticatedOwnerRequestsTransactionForWrongAccount_R
 		AccountNumber: "01000111",
 		UserID:        owner.ID,
 		Name:          "Current Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	otherAccount := createTestAccount(t, repo, accounts.CreateParams{
 		AccountNumber: "01000112",
 		UserID:        owner.ID,
 		Name:          "Savings Account",
-		AccountType:   "personal",
+		AccountType:   accounts.AccountTypePersonal,
 	})
 	transaction := createTestTransaction(t, repo, accounts.CreateTransactionParams{
 		ID:            "tan-wrongaccount1",
@@ -634,7 +634,7 @@ func TestFetchTransaction_AuthenticatedOwnerRequestsTransactionForWrongAccount_R
 		UserID:        owner.ID,
 		Amount:        7500,
 		Currency:      "GBP",
-		Type:          "deposit",
+		Type:          accounts.TransactionTypeDeposit,
 	})
 
 	handler := NewAccountHandler(repo, tokenService)

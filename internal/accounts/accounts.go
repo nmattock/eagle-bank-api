@@ -9,13 +9,25 @@ import (
 var ErrAlreadyExists = errors.New("bank account already exists")
 var ErrNotFound = errors.New("bank account not found")
 var ErrInsufficientFunds = errors.New("insufficient funds")
+var ErrInvalidTransactionType = errors.New("invalid transaction type")
+
+type AccountType string
+
+const AccountTypePersonal AccountType = "personal"
+
+type TransactionType string
+
+const (
+	TransactionTypeDeposit    TransactionType = "deposit"
+	TransactionTypeWithdrawal TransactionType = "withdrawal"
+)
 
 type BankAccount struct {
 	AccountNumber string
 	UserID        string
 	SortCode      string
 	Name          string
-	AccountType   string
+	AccountType   AccountType
 	Balance       int64 // minor units (pence)
 	Currency      string
 	CreatedAt     time.Time
@@ -26,7 +38,7 @@ type CreateParams struct {
 	AccountNumber string
 	UserID        string
 	Name          string
-	AccountType   string
+	AccountType   AccountType
 }
 
 type Transaction struct {
@@ -35,7 +47,7 @@ type Transaction struct {
 	UserID        string
 	Amount        int64 // minor units (pence)
 	Currency      string
-	Type          string
+	Type          TransactionType
 	Reference     *string
 	CreatedAt     time.Time
 }
@@ -46,7 +58,7 @@ type CreateTransactionParams struct {
 	UserID        string
 	Amount        int64 // minor units (pence)
 	Currency      string
-	Type          string
+	Type          TransactionType
 	Reference     string
 }
 
