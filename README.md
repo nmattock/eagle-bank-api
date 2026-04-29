@@ -13,7 +13,7 @@ From the repo root:
 
 ```bash
 docker compose up -d
-go test ./...
+./scripts/test-summary.sh
 ```
 
 This starts local Postgres and runs unit tests.
@@ -197,12 +197,18 @@ Expected response: `400 Bad Request`.
 
 ## Tests
 
+A summary script gives per-package pass/fail counts:
+
+```bash
+./scripts/test-summary.sh
+```
+
 ### Unit tests
 
 Fast tests (in-memory store, no Postgres):
 
 ```bash
-go test ./...
+./scripts/test-summary.sh ./...
 ```
 
 ### Integration tests (real Postgres)
@@ -214,7 +220,7 @@ Run:
 ```bash
 docker compose up -d
 export TEST_DATABASE_URL='postgres://eagle:eagle@localhost:5432/eagle_bank?sslmode=disable'
-go test -tags=integration ./internal/users/postgres/... ./internal/httpapi/...
+./scripts/test-summary.sh -tags=integration ./internal/users/postgres/... ./internal/httpapi/...
 ```
 
 If you publish Postgres on another host port, update `TEST_DATABASE_URL` accordingly (for example `localhost:5433`).
