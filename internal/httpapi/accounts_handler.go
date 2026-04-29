@@ -60,9 +60,13 @@ type transactionResponse struct {
 	CreatedTimestamp string  `json:"createdTimestamp"`
 }
 
+type listTransactionsResponse struct {
+	Transactions []transactionResponse `json:"transactions"`
+}
+
 func (h *AccountHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(r.URL.Path, "/transactions") && strings.HasPrefix(r.URL.Path, "/v1/accounts/") {
-		h.handleCreateTransaction(w, r)
+		h.handleAccountTransactions(w, r)
 		return
 	}
 	if strings.HasPrefix(r.URL.Path, "/v1/accounts/") {
@@ -78,6 +82,17 @@ func (h *AccountHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleCreateAccount(w, r)
 	case http.MethodGet:
 		h.handleListAccounts(w, r)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *AccountHandler) handleAccountTransactions(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		h.handleCreateTransaction(w, r)
+	case http.MethodGet:
+		h.handleListTransactions(w, r)
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -236,6 +251,47 @@ func (h *AccountHandler) handleCreateTransaction(w http.ResponseWriter, r *http.
 		return
 	}
 	writeJSON(w, http.StatusCreated, toTransactionResponse(transaction))
+}
+
+func (h *AccountHandler) handleListTransactions(w http.ResponseWriter, r *http.Request) {
+	accountNumber := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/v1/accounts/"), "/transactions")
+	if accountNumber == "" || strings.Contains(accountNumber, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	claims, ok := h.authenticate(w, r)
+	if !ok {
+		return
+	}
+
+	account, err := h.repo.GetByAccountNumber(r.Context(), accountNumber)
+	if err != nil {
+		if errors.Is(err, accounts.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	if account.UserID != claims.Subject {
+		writeJSON(w, http.StatusForbidden, errorResponse{Message: "forbidden"})
+		return
+	}
+
+	transactions, err := h.repo.ListTransactionsByAccountNumber(r.Context(), accountNumber)
+	if err != nil {
+		if errors.Is(err, accounts.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, errorResponse{Message: "bank account not found"})
+			return
+		}
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Message: "internal server error"})
+		return
+	}
+	resp := listTransactionsResponse{Transactions: make([]transactionResponse, 0, len(transactions))}
+	for _, transaction := range transactions {
+		resp.Transactions = append(resp.Transactions, toTransactionResponse(transaction))
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *AccountHandler) authenticate(w http.ResponseWriter, r *http.Request) (*auth.Claims, bool) {

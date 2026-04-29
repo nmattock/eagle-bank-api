@@ -122,6 +122,26 @@ func (r *AccountStore) CreateTransaction(ctx context.Context, params accounts.Cr
 	return cloneTransaction(transaction), nil
 }
 
+func (r *AccountStore) ListTransactionsByAccountNumber(ctx context.Context, accountNumber string) ([]*accounts.Transaction, error) {
+	_ = ctx
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if _, ok := r.byAccountNumber[accountNumber]; !ok {
+		return nil, accounts.ErrNotFound
+	}
+	result := make([]*accounts.Transaction, 0)
+	for _, transaction := range r.transactions {
+		if transaction.AccountNumber == accountNumber {
+			result = append(result, cloneTransaction(transaction))
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CreatedAt.Before(result[j].CreatedAt)
+	})
+	return result, nil
+}
+
 func cloneAccount(account *accounts.BankAccount) *accounts.BankAccount {
 	out := *account
 	return &out

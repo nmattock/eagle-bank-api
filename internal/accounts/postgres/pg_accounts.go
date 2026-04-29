@@ -138,6 +138,41 @@ WHERE account_number = $3
 	return transaction, nil
 }
 
+func (r *AccountDb) ListTransactionsByAccountNumber(ctx context.Context, accountNumber string) ([]*accounts.Transaction, error) {
+	var exists int
+	err := r.db.QueryRowContext(ctx, `SELECT 1 FROM bank_accounts WHERE account_number = $1`, accountNumber).Scan(&exists)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, accounts.ErrNotFound
+		}
+		return nil, err
+	}
+
+	rows, err := r.db.QueryContext(ctx, `
+SELECT id, account_number, user_id, amount, currency, type, reference, created_at
+FROM transactions
+WHERE account_number = $1
+ORDER BY created_at ASC, id ASC
+`, accountNumber)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make([]*accounts.Transaction, 0)
+	for rows.Next() {
+		transaction, err := scanTransaction(rows)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, transaction)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 type rowScanner interface {
 	Scan(dest ...any) error
 }
