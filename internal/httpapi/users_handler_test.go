@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -60,8 +61,8 @@ func TestCreateUser_UnauthenticatedValidRequest_ReturnsCreated(t *testing.T) {
 		t.Fatalf("unmarshal response: %v body=%s", err, rr.Body.String())
 	}
 
-	if !strings.HasPrefix(resp.ID, "usr-") {
-		t.Fatalf("id = %q, want prefix usr-", resp.ID)
+	if !regexp.MustCompile(`^usr-[A-Za-z0-9]+$`).MatchString(resp.ID) {
+		t.Fatalf("id = %q, want format ^usr-[A-Za-z0-9]+$", resp.ID)
 	}
 	if resp.Name != "Alice" {
 		t.Fatalf("name = %q, want Alice", resp.Name)

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"eagle-bank-api/internal/users"
+	"github.com/google/uuid"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -91,7 +92,7 @@ func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := users.CreateParams{
-		ID:           "usr-" + strings.ReplaceAll(time.Now().UTC().Format("20060102150405.000000000"), ".", ""),
+		ID:           generateUserID(),
 		Name:         req.Name,
 		AddressLine1: req.Address.Line1,
 		Town:         req.Address.Town,
@@ -178,6 +179,13 @@ func validateCreateUserRequest(req createUserRequest) error {
 		return errors.New("password is required")
 	}
 	return nil
+}
+
+func generateUserID() string {
+	// OpenAPI/DB require ^usr-[A-Za-z0-9]+$.
+	// UUID entropy is desirable, but canonical UUIDs include hyphens; strip them
+	// so IDs remain spec-compliant while being hard to guess.
+	return "usr-" + strings.ReplaceAll(uuid.NewString(), "-", "")
 }
 
 func writeJSON(w http.ResponseWriter, status int, body any) {
