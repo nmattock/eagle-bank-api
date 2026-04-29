@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -117,7 +116,7 @@ func (h *UserHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		params.AddressLine3 = &line3
 	}
 
-	createdUser, err := h.repo.Create(context.Background(), params)
+	createdUser, err := h.repo.Create(r.Context(), params)
 	if err != nil {
 		if errors.Is(err, users.ErrAlreadyExists) {
 			writeJSON(w, http.StatusConflict, errorResponse{Message: "user already exists"})
